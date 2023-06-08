@@ -1,6 +1,6 @@
 import io
 from PIL import Image
-import utils
+from kfb.utils import *
 import numpy as np
 from openslide import AbstractSlide, _OpenSlideMap
 
@@ -8,30 +8,30 @@ class TSlide(AbstractSlide):
     def __init__(self, filename):
         AbstractSlide.__init__(self)
         self.__filename = filename
-        self._osr = utils.kfbslide_open(filename)
+        self._osr = kfbslide_open(filename)
 
     def __repr__(self):
         return '%s(%r)' % (self.__class__.__name__, self.__filename)
 
     @classmethod
     def detect_format(cls, filename):
-        return utils.detect_vendor(filename)
+        return detect_vendor(filename)
 
     def close(self):
-        utils.kfbslide_close(self._osr)
+        kfbslide_close(self._osr)
 
     @property
     def level_count(self):
-        return utils.kfbslide_get_level_count(self._osr)
+        return kfbslide_get_level_count(self._osr)
 
     @property
     def level_dimensions(self):
-        return tuple(utils.kfbslide_get_level_dimensions(self._osr, i)
+        return tuple(kfbslide_get_level_dimensions(self._osr, i)
                      for i in range(self.level_count))
 
     @property
     def level_downsamples(self):
-        return tuple(utils.kfbslide_get_level_downsample(self._osr, i)
+        return tuple(kfbslide_get_level_downsample(self._osr, i)
                      for i in range(self.level_count))
 
     @property
@@ -43,7 +43,7 @@ class TSlide(AbstractSlide):
         return _AssociatedImageMap(self._osr)
 
     def get_best_level_for_downsample(self, downsample):
-        return utils.kfbslide_get_best_level_for_downsample(self._osr, downsample)
+        return kfbslide_get_best_level_for_downsample(self._osr, downsample)
 
     def read_region(self, location, level, size):
         # import pdb
@@ -55,7 +55,7 @@ class TSlide(AbstractSlide):
         img_index = kfbRef.img_count
         kfbRef.img_count += 1
 
-        return Image.open(io.BytesIO(utils.kfbslide_read_roi_region(self._osr, level, x, y, width, height)))
+        return Image.open(io.BytesIO(kfbslide_read_roi_region(self._osr, level, x, y, width, height)))
 
     def get_thumbnail(self, size):
         """Return a PIL.Image containing an RGB thumbnail of the image.
@@ -70,10 +70,10 @@ class kfbRef:
 
 class _KfbPropertyMap(_OpenSlideMap):
     def _keys(self):
-        return utils.kfbslide_property_names(self._osr)
+        return kfbslide_property_names(self._osr)
 
     def __getitem__(self, key):
-        v = utils.kfbslide_property_value(self._osr, key)
+        v = kfbslide_property_value(self._osr, key)
         if v is None:
             raise KeyError()
         return v
@@ -81,12 +81,12 @@ class _KfbPropertyMap(_OpenSlideMap):
 
 class _AssociatedImageMap(_OpenSlideMap):
     def _keys(self):
-        return utils.kfbslide_get_associated_image_names(self._osr)
+        return kfbslide_get_associated_image_names(self._osr)
 
     def __getitem__(self, key):
         if key not in self._keys():
             raise KeyError()
-        return utils.kfbslide_read_associated_image(self._osr, key)
+        return kfbslide_read_associated_image(self._osr, key)
 
 class KfbSlide:
     def __init__(self,path):
