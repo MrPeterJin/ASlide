@@ -10,6 +10,9 @@ setup(
     author_email='petergamsing@gmail.com',
     url='https://chengjin.netlify.app/',
     description=u'A package to read whole-slide image (WSI) file in .kfb format',
-    packages=find_packages(),
-    }
+    packages=['kfb'],
+    package_dir={'kfb': 'kfb'},
+    package_data={'kfb': ['*.py', 'so/*']},
+    platforms='linux',
+    install_requires=['numpy', 'Pillow', 'openslide-python'],
 )
