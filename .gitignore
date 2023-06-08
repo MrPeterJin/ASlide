@@ -1,0 +1,3 @@
+/build/
+*.egg-info
+/kfb/__pycache__/
