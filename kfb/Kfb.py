@@ -105,7 +105,7 @@ class KfbSlide:
     def get_best_level_for_downsample(self, downsample):
         return self.slide.get_best_level_for_downsample(downsample)
     
-    def read_reigon(self, location, level, size):
+    def read_region(self, location, level, size):
         return self.slide.read_region(location, level, size)
 
 
@@ -116,4 +116,4 @@ if __name__ == '__main__':
     print(slide.level_dimensions)
     print(slide.level_downsamples)
     print(slide.get_best_level_for_downsample(64))
-    print(slide.read_reigon((0,0),0,(1000,1000)))
+    print(slide.read_region((0,0),0,(1000,1000)))
