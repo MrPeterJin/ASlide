@@ -1,3 +1,1 @@
-/build/
-*.egg-info
-/kfb/__pycache__/
+__pycache__
