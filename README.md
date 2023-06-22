@@ -91,7 +91,7 @@ slide = Slide('path/to/your/slide')
 For more details, please refer to the `example_test_case.py` file.
 
 ## Credits
-This package is based on the following projects:
+This package is based on the following projects:       
 [Openslide](https://github.com/openslide/openslide)         
 [sdpc-python](https://github.com/WonderLandxD/sdpc-for-python)          
 [tct](https://github.com/liyu10000/tct)       
