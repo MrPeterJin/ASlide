@@ -1,20 +1,20 @@
 # Aslide
 This is an integrated Pathology Image (a.k.a. Whole-slide image) reading library.
 
-Current support format:
-.svs   
-.tif    
-.ndpi     
-.vms      
-.vmu     
-.scn       
-.mrxs        
-.tiff           
-.kfb          
-.svslide         
-.sdpc         
-.TMAP        
-.bif        
+Current support format:   
+* .svs   
+* .tif    
+* .ndpi     
+* .vms      
+* .vmu     
+* .scn       
+* .mrxs        
+* .tiff           
+* .kfb          
+* .svslide         
+* .sdpc         
+* .TMAP        
+* .bif        
 
 ## Pre-requisite
 You should have opencv 3.4.2 (you need to build it from source code, please make sure the version number is 3.4.2) and ffmpeg. If you don't have it, you can download it by the following commands:
