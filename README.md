@@ -17,34 +17,28 @@ Current support format:
 * .bif        
 
 ## Pre-requisite
-You should have opencv 3.4.2 (you need to build it from source code, please make sure the version number is 3.4.2) and ffmpeg. If you don't have it, you can download it by the following commands:
+You should have opencv 3.4.2 (you need to build it from source code, please make sure the version number is 3.4.2) and ffmpeg. If you don't have it, you can install it by the following commands:
 
+### OpenCV
 ```bash
 wget https://github.com/opencv/opencv/archive/3.4.2.zip
-```
-
-```bash
-sudo apt-get install ffmpeg
-```
-
-For opencv, you need to unzip it and build it from source code:
-
-```bash
 cd ./opencv3.4.2  
-mkdir release  
-cd release
-  
-#**Compile**  
+mkdir build
+cd build 
+
+# Complie
 cmake -D CMAKE_BUILD_TYPE=RELEASE -D CMAKE_INSTALL_PREFIX=/usr/local -D WITH_TBB=OFF -D BUILD_NEW_PYTHON_SUPPORT=ON -D WITH_V4L=ON -D WITH_QT=OFF -D WITH_OPENGL=ON .. 
 
-#**Make and install** (long time waiting)  -j4 is for compiling using 4 cores of CPU
-sudo make -j4
+# Install (use -j option to enable multi-core processing)
 sudo make install
 ```
 
 Please refer to [this](https://docs.opencv.org/3.4.2/d7/d9f/tutorial_linux_install.html) for more details.
 
-
+### ffmpeg
+```bash
+sudo apt-get install ffmpeg
+```
 
 ## Installation
 Since the package is not uploaded to PyPI, you need to install it from source code.
