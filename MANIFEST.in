@@ -1,0 +1,4 @@
+recursive-include Aslide/kfb *.so
+recursive-include Aslide/tmap *.so
+recursive-include Aslide/tmap *.h
+recursive-include Aslide/sdpc/so *
