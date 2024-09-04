@@ -16,7 +16,7 @@ Current support format:
 * .TMAP        
 * .bif        
 
-This package currently tested and worked on:
+This package currently tested and worked on:               
 Ubuntu 22.04 LTS
 
 ## Pre-requisite
@@ -103,5 +103,6 @@ This package is based on the following projects:
 [Openslide](https://github.com/openslide/openslide)         
 [sdpc-python](https://github.com/WonderLandxD/sdpc-for-python)          
 [tct](https://github.com/liyu10000/tct)       
+[WSI-SDK](https://github.com/yasohasakii/WSI-SDK)
 
 Many thanks to the authors of these projects.
