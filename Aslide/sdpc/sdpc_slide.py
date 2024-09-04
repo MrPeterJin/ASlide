@@ -5,7 +5,7 @@ import gc
 import os
 import sys
 from PIL import Image
-from sdpc.Sdpc_struct import SqSdpcInfo
+from .Sdpc_struct import SqSdpcInfo
 
 
 # import dll file
