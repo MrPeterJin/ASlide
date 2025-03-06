@@ -17,9 +17,11 @@ soPath = os.path.join(dirname, 'so/libDecodeSdpc.so')
 so = ctypes.CDLL(soPath)
 so.GetLayerInfo.restype = POINTER(c_char)
 so.SqGetRoiRgbOfSpecifyLayer.argtypes = [POINTER(SqSdpcInfo), POINTER(POINTER(c_uint8)),
-                                         c_int, c_int, c_uint, c_uint, c_int]
+                                             c_int, c_int, c_uint, c_uint, c_int]
 so.SqGetRoiRgbOfSpecifyLayer.restype = c_int
 so.SqOpenSdpc.restype = POINTER(SqSdpcInfo)
+so.GetLabelJpeg.argtypes = [POINTER(SqSdpcInfo), POINTER(c_uint), POINTER(c_uint), POINTER(c_size_t)]
+so.GetLabelJpeg.restype = POINTER(c_uint8)
 
 
 class SdpcSlide:
@@ -29,6 +31,9 @@ class SdpcSlide:
         self.level_count = self.getLevelCount()
         self.level_downsamples = self.getLevelDownsamples()
         self.level_dimensions = self.getLevelDimensions()
+        self.scan_magnification = self.readSdpc(sdpcPath).contents.picHead.contents.rate
+        self.sampling_rate = self.readSdpc(sdpcPath).contents.picHead.contents.scale
+        self.properties = {'openslide.mpp-t': self.sampling_rate, 'openslide.mpp-x': self.sampling_rate, 'openslide.vendor': 'TEKSQRAY'} # maintain consistency with openslide API
 
     def getRgb(self, rgbPos, width, height):
 
@@ -84,6 +89,10 @@ class SdpcSlide:
         gc.collect()
 
         return Image.fromarray(rgbCopy)
+
+    def get_thumbnail(self, thumbnail_level):
+        thumbnail = np.array(self.read_region((0, 0), thumbnail_level, self.level_dimensions[thumbnail_level]))
+        return thumbnail
 
     def getLevelDimensions(self):
 
