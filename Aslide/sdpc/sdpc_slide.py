@@ -4,6 +4,7 @@ from ctypes import *
 import gc
 import os
 import sys
+import numpy as np
 from PIL import Image
 from .Sdpc_struct import SqSdpcInfo
 
