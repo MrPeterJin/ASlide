@@ -14,14 +14,16 @@ Current support format:
 * .svslide         
 * .sdpc         
 * .TMAP        
-* .bif        
+* .bif
+* .czi                                  
 
 This package currently tested and worked on:               
 Ubuntu 22.04 LTS
 
 ## Pre-requisite
 Installing these pre-requisites need a super user privilege on a workstation/server. If you do not have this, please contact your administrator.
-You should have opencv 3.4.2 (you need to build it from source code, please make sure the version number is 3.4.2) and ffmpeg. If you don't have it, you can install it by the following commands:
+You should have [openslide-python](https://pypi.org/project/openslide-python/) installed as a prerequisite package.
+You should also have opencv 3.4.2 (you need to build it from source code, please make sure the version number is 3.4.2) and ffmpeg. If you don't have it, you can install it by the following commands:
 
 ### OpenCV
 Before installing opencv, a super user privilege is required to install the following pacakges:
