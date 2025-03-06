@@ -1,30 +1,35 @@
 # Aslide
+
 This is an integrated Pathology Image (a.k.a. Whole-slide image) reading library.
 
-Current support format:   
-* .svs   
-* .tif    
-* .ndpi     
-* .vms      
-* .vmu     
-* .scn       
-* .mrxs        
-* .tiff           
-* .kfb          
-* .svslide         
-* .sdpc         
-* .TMAP        
-* .bif
-* .czi                                  
+Current support format:
 
-This package currently tested and worked on:               
+- .svs
+- .tif
+- .ndpi
+- .vms
+- .vmu
+- .scn
+- .mrxs
+- .tiff
+- .kfb
+- .svslide
+- .sdpc
+- .TMAP
+- .bif
+- .czi
+
+This package currently tested and worked on:
+
 - Ubuntu 22.04 LTS, Python 3.7
 - Ubuntu 20.04 LTS, Python 3.8
 
 ## Pre-requisite
-You should have [openslide-python](https://pypi.org/project/openslide-python/) installed as a prerequisite package.     
+
+You should have [openslide-python](https://pypi.org/project/openslide-python/) installed as a prerequisite package.
 
 ## Installation
+
 Since the package is not uploaded to PyPI, you need to install it from source code.
 
 ```bash
@@ -32,6 +37,7 @@ python setup.py install
 ```
 
 ## Troubleshooting
+
 If you encounter the following error:
 
 ```bash
@@ -67,6 +73,7 @@ source ~/.bashrc
 ```
 
 ## Usage
+
 Just import the package and use it as follows:
 
 ```python
@@ -78,14 +85,16 @@ slide = Slide('path/to/your/slide')
 For more details, please refer to the `example_test_case.py` file.
 
 ## Projects Using This Package
+
 - [PrePATH](https://github.com/birkhoffkiki/PrePATH) - A pre-processing tool for Pathology Image.
 - You can add your project here by submitting a pull request!
 
 ## Credits
-This package is based on the following projects:       
-[Openslide](https://github.com/openslide/openslide)         
-[sdpc-python](https://github.com/WonderLandxD/sdpc-for-python)          
-[tct](https://github.com/liyu10000/tct)       
+
+This package is based on the following projects:  
+[Openslide](https://github.com/openslide/openslide)  
+[sdpc-python](https://github.com/WonderLandxD/sdpc-for-python)  
+[tct](https://github.com/liyu10000/tct)  
 [WSI-SDK](https://github.com/yasohasakii/WSI-SDK)
 
 Many thanks to the authors of these projects.
