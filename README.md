@@ -86,6 +86,7 @@ For more details, please refer to the `example_test_case.py` file.
 
 ## Projects Using This Package
 
+- [Smart-CCS](https://github.com/hjiangaz/Smart-CCS) - A Generalizable Cervical Cancer Screening System.
 - [PrePATH](https://github.com/birkhoffkiki/PrePATH) - A pre-processing tool for Pathology Image.
 - You can add your project here by submitting a pull request!
 
