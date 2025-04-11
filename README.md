@@ -17,10 +17,10 @@ Current support format:
 - .sdpc
 - .TMAP
 - .bif
-- .czi
 
 This package currently tested and worked on:
 
+- Ubuntu 22.04 LTS, Python 3.11
 - Ubuntu 22.04 LTS, Python 3.7
 - Ubuntu 20.04 LTS, Python 3.8
 
@@ -93,6 +93,7 @@ For more details, please refer to the `example_test_case.py` file.
 ## Credits
 
 This package is based on the following projects:  
+
 [Openslide](https://github.com/openslide/openslide)  
 [sdpc-python](https://github.com/WonderLandxD/sdpc-for-python)  
 [tct](https://github.com/liyu10000/tct)  
