@@ -61,9 +61,9 @@ class SdpcSlide:
         for i in range(levelCount):
             _list.append(rate ** i)
         return tuple(_list)
-    
+
     def get_best_level_for_downsample(self, downsample):
-      
+
         preset = [i*i for i in self.level_downsamples]
         err = [abs(i-downsample) for i in preset]
         level = err.index(min(err))
@@ -80,16 +80,26 @@ class SdpcSlide:
 
         rgbPos = POINTER(c_uint8)()
         rgbPosPointer = byref(rgbPos)
-        so.SqGetRoiRgbOfSpecifyLayer(self.sdpc, rgbPosPointer, width, height, startX, startY, level)
-        rgb = self.getRgb(rgbPos, width, height)[..., ::-1]
-        rgbCopy = rgb.copy()
+        try:
+            result = so.SqGetRoiRgbOfSpecifyLayer(self.sdpc, rgbPosPointer, width, height, startX, startY, level)
+            if result != 0:
+                # if result != 0, raise an exception
+                raise Exception("Failed to read region")
 
-        so.Dispose(rgbPos)
-        del rgbPos
-        del rgbPosPointer
-        gc.collect()
+            rgb = self.getRgb(rgbPos, width, height)[..., ::-1]
+            rgbCopy = rgb.copy()
 
-        return Image.fromarray(rgbCopy)
+            img = Image.fromarray(rgbCopy)
+            return img
+        finally:
+            # Ensure resources are released
+            if rgbPos:
+                so.Dispose(rgbPos)
+
+            del rgbPos
+            del rgbPosPointer
+
+            gc.collect()
 
     def get_thumbnail(self, thumbnail_level):
         thumbnail = np.array(self.read_region((0, 0), thumbnail_level, self.level_dimensions[thumbnail_level]))
@@ -108,27 +118,41 @@ class SdpcSlide:
         levelDimensions = []
         for level in range(levelCount):
             layerInfo = so.GetLayerInfo(self.sdpc, level)
-            count = 0
-            byteList = []
-            while (ord(layerInfo[count]) != 0):
-                byteList.append(layerInfo[count])
-                count += 1
+            try:
+                count = 0
+                byteList = []
+                while (ord(layerInfo[count]) != 0):
+                    byteList.append(layerInfo[count])
+                    count += 1
 
-            strList = [byteValue.decode('utf-8') for byteValue in byteList]
-            str = ''.join(strList)
+                strList = [byteValue.decode('utf-8') for byteValue in byteList]
+                str = ''.join(strList)
 
-            equal1, equal2, equal3, equal4 = findStrIndex("=", str)
-            line1, line2, line3, line4 = findStrIndex("|", str)
+                equal1, equal2, equal3, equal4 = findStrIndex("=", str)
+                line1, line2, line3, line4 = findStrIndex("|", str)
 
-            rawWidth = int(str[equal1 + 1:line1])
-            rawHeight = int(str[equal2 + 1:line2])
-            boundWidth = int(str[equal3 + 1:line3])
-            boundHeight = int(str[equal4 + 1:line4])
-            w, h = rawWidth - boundWidth, rawHeight - boundHeight
-            levelDimensions.append((w, h))
+                rawWidth = int(str[equal1 + 1:line1])
+                rawHeight = int(str[equal2 + 1:line2])
+                boundWidth = int(str[equal3 + 1:line3])
+                boundHeight = int(str[equal4 + 1:line4])
+                w, h = rawWidth - boundWidth, rawHeight - boundHeight
+                levelDimensions.append((w, h))
+            finally:
+                # 释放 layerInfo 资源
+                if hasattr(so, 'FreeLayerInfo'):
+                    so.FreeLayerInfo(layerInfo)
+                elif hasattr(so, 'Dispose'):
+                    so.Dispose(layerInfo)
 
         return tuple(levelDimensions)
 
     def close(self):
-
-        so.SqCloseSdpc(self.sdpc)
+        try:
+            if hasattr(self, 'sdpc') and self.sdpc:
+                so.SqCloseSdpc(self.sdpc)
+                self.sdpc = None
+        except Exception as e:
+            print(f"Error closing SDPC file: {e}")
+        finally:
+            # 强制清理内存
+            gc.collect()
