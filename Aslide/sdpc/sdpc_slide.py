@@ -145,7 +145,17 @@ class SdpcSlide:
                     so.Dispose(layerInfo)
 
         return tuple(levelDimensions)
-
+    
+    def saveLabelImg(self, save_path):
+        wPos = POINTER(c_uint)(c_uint(0))
+        hPos = POINTER(c_uint)(c_uint(0))
+        sizePos = POINTER(c_size_t)(c_size_t(0))
+        rgb_pos = so.GetLabelJpeg(self.sdpc, wPos, hPos, sizePos)
+        with open(save_path, 'bw') as f:
+            buf = bytearray(rgb_pos[:sizePos.contents.value])
+            f.write(buf)
+        f.close()
+    
     def close(self):
         try:
             if hasattr(self, 'sdpc') and self.sdpc:
