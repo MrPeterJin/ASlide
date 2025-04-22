@@ -96,11 +96,11 @@ class Slide(object):
 
 	def label_image(self, save_path):
 		if self.format in ['.tmap', '.TMAP']:
-			return self._osr.associated_images('label')
+			return self._osr.associated_images('label').save(save_path)
 		elif self.format in ['.sdpc', '.SDPC']:
 			return self._osr.saveLabelImg(save_path)
 		else:
-			return self._osr.associated_images.get('label', None)
+			return self._osr.associated_images.get('label', None).save(save_path)
 
 	def get_best_level_for_downsample(self, downsample):
 		return self._osr.get_best_level_for_downsample(downsample)
