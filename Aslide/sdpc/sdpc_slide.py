@@ -101,8 +101,9 @@ class SdpcSlide:
 
             gc.collect()
 
-    def get_thumbnail(self, thumbnail_level):
-        thumbnail = np.array(self.read_region((0, 0), thumbnail_level, self.level_dimensions[thumbnail_level]))
+    def get_thumbnail(self, thumbnail_size):
+        thumbnail = self.read_region((0, 0), len(self.level_dimensions) - 1, self.level_dimensions[-1])
+        thumbnail = thumbnail.resize(thumbnail_size)
         return thumbnail
 
     def getLevelDimensions(self):
