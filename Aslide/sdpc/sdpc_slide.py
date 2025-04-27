@@ -36,6 +36,11 @@ class SdpcSlide:
         self.sampling_rate = self.readSdpc(sdpcPath).contents.picHead.contents.scale
         self.properties = {'openslide.mpp-t': self.sampling_rate, 'openslide.mpp-x': self.sampling_rate, 'openslide.vendor': 'TEKSQRAY'} # maintain consistency with openslide API
 
+    @property
+    def dimensions(self):
+        """Return the dimensions of the highest resolution level (level 0)."""
+        return self.level_dimensions[0] if self.level_dimensions else (0, 0)
+
     def getRgb(self, rgbPos, width, height):
 
         intValue = npCtypes.as_array(rgbPos, (height, width, 3))
@@ -146,7 +151,7 @@ class SdpcSlide:
                     so.Dispose(layerInfo)
 
         return tuple(levelDimensions)
-    
+
     def saveLabelImg(self, save_path):
         wPos = POINTER(c_uint)(c_uint(0))
         hPos = POINTER(c_uint)(c_uint(0))
@@ -156,7 +161,7 @@ class SdpcSlide:
             buf = bytearray(rgb_pos[:sizePos.contents.value])
             f.write(buf)
         f.close()
-    
+
     def close(self):
         try:
             if hasattr(self, 'sdpc') and self.sdpc:
