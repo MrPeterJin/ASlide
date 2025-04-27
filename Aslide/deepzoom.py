@@ -6,11 +6,12 @@ from Aslide.sdpc.sdpc_deepzoom import DeepZoomGenerator as SdpcDZG
 
 
 class ADeepZoomGenerator(object):
-    def __init__(self, osr, tile_size=254, overlap=1, limit_bounds=False):
+    def __init__(self, osr, tile_size=254, overlap=1, limit_bounds=False, max_level_size=10000):
         if osr.format in ['.kfb', '.KFB']:
             self._dzg = KfbDZG(osr, tile_size, overlap, limit_bounds)
         elif osr.format in ['.sdpc', '.SDPC']:
-            self._dzg = SdpcDZG(osr, tile_size, overlap, limit_bounds)
+            # Pass max_level_size to SDPC DeepZoomGenerator for performance optimization
+            self._dzg = SdpcDZG(osr, tile_size, overlap, limit_bounds, max_level_size)
         elif osr.format in ['.tmap', '.TMAP']:
             self._dzg = TmapDZG(osr, 256, overlap, limit_bounds)
         else:

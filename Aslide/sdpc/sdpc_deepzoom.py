@@ -121,8 +121,35 @@ class DeepZoomGenerator(object):
         l0_z_x = int(z_x * l0_z_downsample)
         l0_z_y = int(z_y * l0_z_downsample)
 
+        # Debug information
+        if level < 13:
+            print(f"_get_tile_info: level={level}, address={address}, slide_level={slide_level}")
+            print(f"  tile_size={tile_size}, z_overlap={z_overlap}")
+            print(f"  tile_x={tile_x}, tile_y={tile_y}")
+            print(f"  z_size={z_size}, z_x={z_x}, z_y={z_y}")
+            print(f"  l0_z_downsample={l0_z_downsample}")
+            print(f"  l0_x={l0_x}, l0_y={l0_y}, l0_z_x={l0_z_x}, l0_z_y={l0_z_y}")
+
         # Return location, level, size
         return (l0_x, l0_y), slide_level, (l0_z_x, l0_z_y), (z_x, z_y)
+
+    def _get_tile_from_level(self, level, address):
+        """Get corresponding tile and not optimizing
+
+        level:     the Deep Zoom level.
+        address:   the address of the tile within the level as a (col, row) tuple.
+        """
+        # Read patch
+        (l0_x, l0_y), slide_level, (l0_z_x, l0_z_y), (z_x, z_y) = self._get_tile_info(level, address)
+
+        # Read region
+        tile = self._osr.read_region((l0_x, l0_y), slide_level, (l0_z_x, l0_z_y))
+
+        # Resize to correct region
+        if tile.size != (z_x, z_y):
+            tile = tile.resize((z_x, z_y), Image.LANCZOS)
+
+        return tile
 
     def get_tile(self, level, address):
         """Return an RGB PIL.Image for a tile.
@@ -134,17 +161,385 @@ class DeepZoomGenerator(object):
         # Get tile information
         (l0_x, l0_y), slide_level, (l0_z_x, l0_z_y), (z_x, z_y) = self._get_tile_info(level, address)
 
+        # Performance Optimization: High resolution -> read_region get_thumbnail
+        # Low resolution -> original deepzoom
+        if level >= 13:
+            print('Executing original deepzoom')
+        elif 0 <= level < 13: # level 13 is an empirical parameter, it works fine on my server
+            try:
+                slide_level_count = len(self._osr.level_dimensions)
+
+                # Get all slide level downsample factors
+                slide_downsamples = self._osr.level_downsamples
+
+                # Assign appropriate slide levels for different DeepZoom levels for progressive quality transition
+                if level < 9:  # Very high resolution levels, use lowest resolution level
+                    # Use the lowest resolution level (last level)
+                    target_slide_level = slide_level_count - 1
+                    print(f"  Very high resolution level {level} < 9, using lowest resolution slide level {target_slide_level}")
+                elif level < 11:  # Higher resolution levels, use second-to-last level (if available)
+                    target_slide_level = max(0, slide_level_count - 2)
+                    print(f"  Higher resolution level {level} < 11, using slide level {target_slide_level}")
+                elif level < 13:  # Medium resolution levels, use third-to-last level (if available)
+                    target_slide_level = max(0, slide_level_count - 3)
+                    # Ensure we don't use too high resolution levels (which may cause performance issues)
+                    target_slide_level = min(target_slide_level, slide_level_count - 2)
+                    print(f"  Medium resolution level {level} < 13, using slide level {target_slide_level}")
+                else:  # Low resolution levels, can use more precise levels
+                    # Calculate ideal downsample factor for current DeepZoom level
+                    ideal_downsample = 2 ** level
+
+                    # Find the closest slide level that is not smaller than half the ideal factor
+                    target_slide_level = 0
+                    min_diff = float('inf')
+
+                    for i, downsample in enumerate(slide_downsamples):
+                        # We want to find a downsample factor that is at least half the ideal factor
+                        if downsample >= ideal_downsample / 2:
+                            diff = abs(downsample - ideal_downsample)
+                            if diff < min_diff:
+                                min_diff = diff
+                                target_slide_level = i
+
+                # Calculate ideal downsample factor (if not already calculated)
+                if 'ideal_downsample' not in locals():
+                    ideal_downsample = 2 ** level
+
+                print(f"  Selected slide level {target_slide_level}, downsample factor: {slide_downsamples[target_slide_level]}, ideal factor: {ideal_downsample}")
+
+                # Calculate coordinates and dimensions in target slide level
+                # First, calculate the global coordinates of the tile in current DeepZoom level
+                x, y = address
+                tile_size = self._z_t_downsample
+                z_overlap = self._z_overlap
+
+                # Calculate pixel coordinates of the tile in current level (top-left corner)
+                tile_x = (x * tile_size) - (x * z_overlap)
+                tile_y = (y * tile_size) - (y * z_overlap)
+
+                # Calculate scale factor for current level (relative to DeepZoom level 0)
+                # Higher DeepZoom levels have lower resolution, so scale factor is a power of 2
+                dz_scale_factor = 2 ** level
+
+                # For high resolution requests (level < 13), we use a simpler direct approach
+                if level < 13:
+                    # For high resolution levels, we use the thumbnail method
+                    # Instead of calculating complex coordinate mappings, we get the entire image thumbnail
+
+                    # Get target level dimensions
+                    target_level_dims = self._osr.level_dimensions[target_slide_level]
+
+                    # Use (0,0) coordinates to get the entire image
+                    slide_x = 0
+                    slide_y = 0
+
+                    # Use smaller dimensions to avoid performance issues
+                    # Different sizes for different levels
+                    if level < 5:  # Very high resolution
+                        max_dim = 64
+                    elif level < 9:  # Medium-high resolution
+                        max_dim = 128
+                    else:  # Higher resolution
+                        max_dim = 256
+
+                    # Maintain aspect ratio
+                    if target_level_dims[0] > target_level_dims[1]:
+                        slide_width = min(max_dim, target_level_dims[0])
+                        slide_height = int(target_level_dims[1] * (slide_width / target_level_dims[0]))
+                    else:
+                        slide_height = min(max_dim, target_level_dims[1])
+                        slide_width = int(target_level_dims[0] * (slide_height / target_level_dims[1]))
+
+                    # Ensure dimensions are not zero
+                    slide_width = max(32, slide_width)
+                    slide_height = max(32, slide_height)
+
+                    # Calculate coordinates in level 0 (for read_region)
+                    slide_scale = self._osr.level_downsamples[target_slide_level]
+                    l0_tile_x = 0
+                    l0_tile_y = 0
+
+                    print(f"  Simplified method: Using whole image thumbnail, size: {slide_width}x{slide_height}")
+                    print(f"  Target level dimensions: {target_level_dims}")
+                else:
+                    # For low resolution levels, use original coordinate mapping method
+                    # Calculate coordinates in DeepZoom level 0 (highest resolution)
+                    l0_tile_x = tile_x * dz_scale_factor
+                    l0_tile_y = tile_y * dz_scale_factor
+
+                    # Get scale factor for target slide level
+                    slide_scale = self._osr.level_downsamples[target_slide_level]
+
+                    # Calculate coordinates in target slide level
+                    slide_x = int(l0_tile_x / slide_scale)
+                    slide_y = int(l0_tile_y / slide_scale)
+
+                    # Calculate dimensions in target slide level
+                    slide_width = int(z_x * dz_scale_factor / slide_scale)
+                    slide_height = int(z_y * dz_scale_factor / slide_scale)
+
+                # Ensure dimensions are not zero
+                slide_width = max(1, slide_width)
+                slide_height = max(1, slide_height)
+
+                print(f"  Using slide level: {target_slide_level}, coordinates: ({slide_x}, {slide_y}), size: {slide_width}x{slide_height}")
+                print(f"  Original DeepZoom level: {level}, address: {address}, tile size: {z_x}x{z_y}")
+
+                # Check if coordinates and dimensions are valid
+                if slide_width <= 0 or slide_height <= 0:
+                    print(f"  Warning: Invalid dimensions {slide_width}x{slide_height}, using default values")
+                    slide_width = max(1, slide_width)
+                    slide_height = max(1, slide_height)
+
+                # Check if coordinates are within valid range
+                if l0_tile_x < 0 or l0_tile_y < 0:
+                    print(f"  Warning: Negative coordinates ({l0_tile_x}, {l0_tile_y}), adjusting to (0, 0)")
+                    l0_tile_x = max(0, l0_tile_x)
+                    l0_tile_y = max(0, l0_tile_y)
+
+                # For levels below 13, we need to be especially careful to avoid service freezes
+                if level < 13:
+                    # For high resolution levels, we need to balance image quality and performance
+                    # Use different maximum size limits for different levels
+                    if level < 5:  # Very high resolution
+                        max_size = 128  # Very strict limit
+                    elif level < 9:  # Medium-high resolution
+                        max_size = 256  # Stricter limit
+                    else:  # Higher resolution
+                        max_size = 384  # Moderate limit
+
+                    original_width, original_height = slide_width, slide_height
+
+                    if slide_width > max_size or slide_height > max_size:
+                        print(f"  Warning: Size too large {slide_width}x{slide_height}, limiting to max {max_size}")
+                        # Maintain aspect ratio
+                        if slide_width > slide_height:
+                            slide_height = max(1, int(slide_height * (max_size / slide_width)))
+                            slide_width = max_size
+                        else:
+                            slide_width = max(1, int(slide_width * (max_size / slide_height)))
+                            slide_height = max_size
+
+                    # Ensure dimensions are not smaller than minimum value
+                    min_size = 32  # Minimum size
+                    slide_width = max(min_size, slide_width)
+                    slide_height = max(min_size, slide_height)
+
+                    print(f"  Size adjustment: Original {original_width}x{original_height} -> Final {slide_width}x{slide_height}")
+
+                # For high resolution requests (level < 13), we use improved thumbnail method
+                if level < 13:
+                    try:
+                        print(f"  Using improved thumbnail method")
+
+                        # Get whole image thumbnail, adjust size and quality based on level
+                        if level < 5:  # Very high resolution
+                            thumb_size = 512
+                        elif level < 9:  # Medium-high resolution
+                            thumb_size = 768
+                        elif level < 11:  # Higher resolution
+                            thumb_size = 1024
+                        else:  # Medium resolution
+                            thumb_size = 1536  # Higher quality thumbnail
+
+                        # Get original slide dimensions
+                        original_width, original_height = self._l0_dimensions
+
+                        # Calculate appropriate thumbnail dimensions, maintaining aspect ratio
+                        if original_width > original_height:
+                            thumb_width = thumb_size
+                            thumb_height = int(original_height * (thumb_size / original_width))
+                        else:
+                            thumb_height = thumb_size
+                            thumb_width = int(original_width * (thumb_size / original_height))
+
+                        print(f"  Getting thumbnail, target size: {thumb_width}x{thumb_height}, level: {level}")
+                        full_thumbnail = self._osr.get_thumbnail((thumb_width, thumb_height))
+
+                        if full_thumbnail:
+                            print(f"  Got complete thumbnail, size: {full_thumbnail.size}")
+
+                            # Calculate current tile position in the complete thumbnail
+
+                            # Calculate relative position of current tile in current level (0.0-1.0)
+                            # Use tile address to calculate relative position
+                            x, y = address
+
+                            # Get total dimensions of current level
+                            level_width, level_height = self._z_dimensions[level]
+
+                            # Calculate pixel coordinates of current tile in current level
+                            tile_size = self._z_t_downsample
+                            z_overlap = self._z_overlap
+
+                            # Calculate top-left pixel coordinates of tile (considering overlap)
+                            pixel_x = (x * tile_size) - (x * z_overlap)
+                            pixel_y = (y * tile_size) - (y * z_overlap)
+
+                            # Calculate relative position (0.0-1.0)
+                            rel_x = pixel_x / level_width
+                            rel_y = pixel_y / level_height
+
+                            # Calculate position of current tile in complete thumbnail
+                            thumb_x = int(rel_x * full_thumbnail.size[0])
+                            thumb_y = int(rel_y * full_thumbnail.size[1])
+
+                            # Calculate size of area to crop
+                            # Use same relative size as current tile
+                            rel_width = z_x / level_width
+                            rel_height = z_y / level_height
+
+                            thumb_width = max(1, int(rel_width * full_thumbnail.size[0]))
+                            thumb_height = max(1, int(rel_height * full_thumbnail.size[1]))
+
+                            # Ensure we don't exceed thumbnail boundaries
+                            thumb_x = min(thumb_x, full_thumbnail.size[0] - thumb_width)
+                            thumb_y = min(thumb_y, full_thumbnail.size[1] - thumb_height)
+
+                            # Crop the area corresponding to current tile
+                            crop_box = (thumb_x, thumb_y, thumb_x + thumb_width, thumb_y + thumb_height)
+                            print(f"  Crop area: {crop_box}")
+
+                            try:
+                                thumbnail = full_thumbnail.crop(crop_box)
+
+                                # Resize to requested dimensions
+                                if thumbnail.size != (z_x, z_y):
+                                    thumbnail = thumbnail.resize((z_x, z_y), Image.LANCZOS)
+
+                                print(f"  Cropped and resized thumbnail size: {thumbnail.size}")
+                                return thumbnail
+                            except Exception as e:
+                                print(f"  Failed to crop thumbnail: {e}")
+                                # If cropping fails, try returning resized complete thumbnail
+                                thumbnail = full_thumbnail.resize((z_x, z_y), Image.LANCZOS)
+                                return thumbnail
+                    except Exception as e:
+                        print(f"  Improved thumbnail method failed: {e}")
+                        # If improved thumbnail method fails, continue with other methods
+
+                # Directly use read_region to get image
+                try:
+                    # Set timeout (seconds)
+                    import signal
+
+                    def timeout_handler(signum, frame):
+                        # Parameters are required but not used in function body
+                        # Use # noqa comment to suppress unused variable warnings
+                        raise TimeoutError("Image reading timeout")
+
+                    # Set different timeout times based on level
+                    if level < 5:  # Very high resolution
+                        timeout = 2  # Very short timeout
+                    elif level < 9:  # Medium-high resolution
+                        timeout = 3  # Shorter timeout
+                    elif level < 13:  # Higher resolution
+                        timeout = 5  # Short timeout
+                    else:
+                        timeout = 30  # Normal timeout
+
+                    print(f"  Setting timeout: {timeout} seconds")
+
+                    # Set timeout handler
+                    old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+                    signal.alarm(timeout)
+
+                    try:
+                        # For high resolution requests (level < 13), we use safer parameters
+                        if level < 13:
+                            # Use center area of lowest resolution level
+                            # This avoids requesting edge areas of the image, which may cause read failures
+                            target_level_dims = self._osr.level_dimensions[target_slide_level]
+
+                            # Calculate center area
+                            center_x = target_level_dims[0] // 2
+                            center_y = target_level_dims[1] // 2
+
+                            # Use smaller dimensions
+                            safe_width = min(128, target_level_dims[0])
+                            safe_height = min(128, target_level_dims[1])
+
+                            # Calculate top-left coordinates
+                            safe_x = max(0, center_x - (safe_width // 2))
+                            safe_y = max(0, center_y - (safe_height // 2))
+
+                            # Calculate coordinates in level 0
+                            slide_scale = self._osr.level_downsamples[target_slide_level]
+                            safe_l0_x = int(safe_x * slide_scale)
+                            safe_l0_y = int(safe_y * slide_scale)
+
+                            print(f"  Using safe parameters: coordinates ({safe_l0_x}, {safe_l0_y}), size {safe_width}x{safe_height}")
+                            tile = self._osr.read_region((safe_l0_x, safe_l0_y), target_slide_level, (safe_width, safe_height))
+                        else:
+                            # For low resolution levels, use original parameters
+                            tile = self._osr.read_region((l0_tile_x, l0_tile_y), target_slide_level, (slide_width, slide_height))
+
+                        # Cancel timeout
+                        signal.alarm(0)
+
+                        # Resize to requested dimensions
+                        if tile.size != (z_x, z_y):
+                            tile = tile.resize((z_x, z_y), Image.LANCZOS)
+
+                        return tile
+                    except TimeoutError as te:
+                        print(f"  Image reading timeout: {te}")
+                        # If timeout, return blank image
+                        return Image.new('RGB', (z_x, z_y), self._bg_color)
+                    finally:
+                        # Restore original signal handler
+                        signal.signal(signal.SIGALRM, old_handler)
+                        signal.alarm(0)
+
+                except Exception as e:
+                    print(f"  read_region failed: {e}")
+                    # If all methods fail, return blank image
+                    return Image.new('RGB', (z_x, z_y), self._bg_color)
+            except Exception as e:
+                print(f"Direct read_region processing for level {level} failed: {e}")
+                # If failed, try using original method
+                pass
+
+        # Use original DeepZoom processing method (for level >= 13 or when direct read_region fails)
         try:
-            # Read region from slide - SDPC's read_region already returns RGB images
-            tile = self._osr.read_region((l0_x, l0_y), slide_level, (l0_z_x, l0_z_y))
+            # Read region
+            print(f"Using original DeepZoom method for level {level}, slide level {slide_level}")
 
-            # Scale to the correct size if needed
-            if tile.size != (z_x, z_y):
-                tile = tile.resize((z_x, z_y), Image.LANCZOS)
+            # Set timeout (seconds)
+            import signal
 
-            return tile
+            def timeout_handler(signum, frame):
+                # Parameters are required but not used in function body
+                # Use # noqa comment to suppress unused variable warnings
+                raise TimeoutError("Original method image reading timeout")
+
+            # Set timeout handler
+            timeout = 30  # Normal timeout
+            old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(timeout)
+
+            try:
+                tile = self._osr.read_region((l0_x, l0_y), slide_level, (l0_z_x, l0_z_y))
+
+                # Cancel timeout
+                signal.alarm(0)
+
+                # Resize to correct dimensions
+                if tile.size != (z_x, z_y):
+                    tile = tile.resize((z_x, z_y), Image.LANCZOS)
+
+                return tile
+            except TimeoutError as te:
+                print(f"  Original method image reading timeout: {te}")
+                # If timeout, return blank image
+                return Image.new('RGB', (z_x, z_y), self._bg_color)
+            finally:
+                # Restore original signal handler
+                signal.signal(signal.SIGALRM, old_handler)
+                signal.alarm(0)
+
         except Exception as e:
-            # If reading fails, return a blank tile
+            # If reading fails, return blank tile
             print(f"Error reading tile at level {level}, address {address}: {e}")
             return Image.new('RGB', (z_x, z_y), self._bg_color)
 
