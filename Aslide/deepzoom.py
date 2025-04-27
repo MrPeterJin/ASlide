@@ -2,6 +2,7 @@ from openslide.deepzoom import DeepZoomGenerator as OpenSlideDZG
 
 from Aslide.kfb.kfb_deepzoom import DeepZoomGenerator as KfbDZG
 from Aslide.tmap.tmap_deepzoom import DeepZoomGenerator as TmapDZG
+from Aslide.sdpc.sdpc_deepzoom import DeepZoomGenerator as SdpcDZG
 
 
 class ADeepZoomGenerator(object):
@@ -9,7 +10,7 @@ class ADeepZoomGenerator(object):
         if osr.format in ['.kfb', '.KFB']:
             self._dzg = KfbDZG(osr, tile_size, overlap, limit_bounds)
         elif osr.format in ['.sdpc', '.SDPC']:
-            raise NotImplementedError("UnsupportedFormat or Missing File => %s" % osr.filepath)
+            self._dzg = SdpcDZG(osr, tile_size, overlap, limit_bounds)
         elif osr.format in ['.tmap', '.TMAP']:
             self._dzg = TmapDZG(osr, 256, overlap, limit_bounds)
         else:
