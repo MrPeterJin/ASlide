@@ -81,11 +81,9 @@ class KfbSlide(AbstractSlide):
         return kfb_lowlevel.kfbslide_read_roi_region(self._osr, level, level_x, level_y, width, height)
 
     def get_thumbnail(self, size):
-        """Return a PIL.Image containing an RGB thumbnail of the image.
-
-        size:     the maximum size of the thumbnail."""
-
-        thumb = self.associated_images[b'thumbnail']
+        """Return a PIL.Image containing an RGB thumbnail of the image."""
+        thumb = self.read_region((0, 0), self.level_count - 1, self.level_dimensions[-1])
+        thumb = thumb.resize(size=size, resample=Image.LANCZOS)
         return thumb
 
 
