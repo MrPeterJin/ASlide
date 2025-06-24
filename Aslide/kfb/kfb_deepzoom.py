@@ -217,7 +217,7 @@ class DeepZoomGenerator(object):
         # difference with openslide read_region, 
         # kfb - (x, y) is based on current level
         # openslid - (x, y) is based on 0 level
-        return ((tuple(l_location), slide_level, l_size), z_size)
+        return ((tuple(l0_location), slide_level, l_size), z_size)
 
     def _l0_from_l(self, slide_level, l):
         return self._l0_l_downsamples[slide_level] * l
