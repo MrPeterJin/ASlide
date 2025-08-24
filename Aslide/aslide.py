@@ -1,9 +1,10 @@
 import os
 
 from openslide import OpenSlide
-from Aslide.kfb.kfb_slide import KfbSlide 
+from Aslide.kfb.kfb_slide import KfbSlide
 from Aslide.tmap.tmap_slide import TmapSlide
 from Aslide.sdpc.sdpc_slide import SdpcSlide
+from Aslide.vsi.vsi_slide import VsiSlide
 
 
 class Slide(object):
@@ -45,6 +46,14 @@ class Slide(object):
 				self._osr = SdpcSlide(filepath)
 				if self._osr:
 					read_success = True
+			except:
+				pass
+
+		# 5. vsi
+		if not read_success and self.format in ['.vsi', '.VSI']:
+			try:
+				self._osr = VsiSlide(filepath)
+				read_success = True
 			except:
 				pass
 

@@ -46,4 +46,5 @@ setup_environment()
 from . import kfb
 from . import tmap
 from . import sdpc
+from . import vsi
 from . import aslide

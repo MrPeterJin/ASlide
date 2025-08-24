@@ -42,11 +42,14 @@ class _TmapSlide(object):
 
 # check for errors opening an image file and wrap the resulting handle
 def _check_open(result, _func, _args):
-    if result is None:
+    print(f"_check_open called with result: {result}, type: {type(result)}")
+    if result is None or result == 0:
+        filename = _args[0] if _args else "unknown"
+        print(f"Failed to open TMAP file: {filename}")
         raise lowlevel.OpenSlideUnsupportedFormatError(
-            "Unsupported or missing image file")
+            f"Unsupported or missing TMAP image file: {filename}")
     slide = _TmapSlide(c_void_p(result))
-
+    print(f"Successfully created TmapSlide object: {slide}")
     return slide
 
 
@@ -77,8 +80,8 @@ def _func(name, restype, argtypes, errcheck=_check_error):
     func = getattr(_lib, name)
     func.argtypes = argtypes
     func.restype = restype
-    # if errcheck is not None:
-    #     func.errcheck = errcheck
+    if errcheck is not None:
+        func.errcheck = errcheck
     return func
 
 
@@ -97,11 +100,33 @@ def _handle_func(puc_list, W, H):
 
 
 # function to open a Tmap file
-_open_tmap_file = _func('OpenTmapFile', c_void_p, None, _check_open)
+_open_tmap_file = _func('OpenTmapFile', c_void_p, [c_char_p, c_int], _check_open)
 
 
 def open_tmap_file(name):
-    osr = _open_tmap_file(name, len(name))
+    # Convert string to bytes if necessary
+    if isinstance(name, str):
+        name_bytes = name.encode('utf-8')
+    else:
+        name_bytes = name
+
+    # Debug: print file info
+    print(f"Attempting to open TMAP file: {name}")
+    print(f"File exists: {os.path.exists(name)}")
+    if os.path.exists(name):
+        print(f"File size: {os.path.getsize(name)} bytes")
+
+        # Check file header
+        try:
+            with open(name, 'rb') as f:
+                header = f.read(16)
+                print(f"File header: {header}")
+                print(f"Header as string: {header.decode('ascii', errors='ignore')}")
+        except Exception as e:
+            print(f"Error reading file header: {e}")
+
+    osr = _open_tmap_file(name_bytes, len(name_bytes))
+    print(f"Library returned: {osr}")
     return osr
 
 
@@ -181,7 +206,7 @@ def get_level_downsamples(slide):
     return tuple([np.power(2, i) for i in range(layer_count)])
 
 # function to get the pixel size
-get_pixel_size = _func('GetPixelSize', c_int, [c_void_p])
+get_pixel_size = _func('GetPixelSize', c_float, [c_void_p])
 
 # function to get the image data
 _get_image_data = _func('GetImageData', c_int, [c_void_p, c_int, c_char_p, c_int])
@@ -209,7 +234,7 @@ def get_image_size_ex(slide, nLeft, nTop, nRight, nBottom, fScale):
 
 # function to get the cropped image data
 _get_crop_image_data_ex = _func('GetCropImageDataEx', POINTER(c_ubyte),
-                                [c_void_p, c_int, c_int, c_int, c_int, c_int, c_float])
+                                [c_void_p, c_int, c_int, c_int, c_int, c_int, c_float, c_int])
 
 
 def restore_location_in_level_0(nLeft, nTop, nRight, nBottom, level, max_fscale):
