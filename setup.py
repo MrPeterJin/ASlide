@@ -214,17 +214,18 @@ class CustomInstall(install):
 
 setup(
     name='Aslide',
-    version='1.2.0',
+    version='1.2.1',
     author='MrPeterJin',
     author_email='petergamsing@gmail.com',
     url='https://github.com/MrPeterJin/ASlide',
-    description='A package to read whole-slide image (WSI) files',
+    description='A package to read whole-slide image (WSI) files.',
     packages=find_packages(),
     package_data={
         'Aslide': ['*.py'],
         'Aslide.kfb': ['lib/*'],
         'Aslide.tmap': ['lib/*'],
         'Aslide.sdpc': ['so/**/*'],
+        'Aslide.vsi': ['*.py'],
     },
     cmdclass={'install': CustomInstall},
     platforms='linux',

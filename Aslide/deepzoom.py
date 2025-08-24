@@ -3,6 +3,7 @@ from openslide.deepzoom import DeepZoomGenerator as OpenSlideDZG
 from Aslide.kfb.kfb_deepzoom import DeepZoomGenerator as KfbDZG
 from Aslide.tmap.tmap_deepzoom import DeepZoomGenerator as TmapDZG
 from Aslide.sdpc.sdpc_deepzoom import DeepZoomGenerator as SdpcDZG
+from Aslide.vsi.vsi_deepzoom import VsiDeepZoomGenerator as VsiDZG
 
 
 class ADeepZoomGenerator(object):
@@ -14,6 +15,9 @@ class ADeepZoomGenerator(object):
             self._dzg = SdpcDZG(osr, tile_size, overlap, limit_bounds, max_level_size)
         elif osr.format in ['.tmap', '.TMAP']:
             self._dzg = TmapDZG(osr, 256, overlap, limit_bounds)
+        elif osr.format in ['.vsi', '.VSI']:
+            # VSI format uses specialized DeepZoom generator
+            self._dzg = VsiDZG(osr, tile_size, overlap, limit_bounds)
         else:
             self._dzg = OpenSlideDZG(osr, tile_size, overlap, limit_bounds)
 

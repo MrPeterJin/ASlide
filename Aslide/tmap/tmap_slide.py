@@ -25,9 +25,18 @@ class TmapSlide(AbstractSlide):
 
     @classmethod
     def detect_format(cls, filename):
-        return "un"
+        """Detect if the file is a valid TMAP format"""
+        try:
+            # Try to open the file to see if it's a valid TMAP
+            test_slide = tmap_lowlevel.open_tmap_file(filename)
+            if test_slide:
+                tmap_lowlevel.close_tmap_file(test_slide)
+                return "tmap"
+            return None
+        except:
+            return None
 
-    @classmethod
+    @property
     def get_scan_scale(self):
         return tmap_lowlevel.get_scan_scale(self._osr)
 
@@ -58,6 +67,33 @@ class TmapSlide(AbstractSlide):
     @property
     def dimensions(self):
         return tmap_lowlevel.get_dimensions(self._osr)
+
+    @property
+    def properties(self):
+        """Return a dict of slide properties"""
+        props = {}
+        try:
+            props['tmap.scan-scale'] = str(tmap_lowlevel.get_scan_scale(self._osr))
+            props['tmap.version'] = str(tmap_lowlevel.get_tmap_version(self._osr))
+            props['tmap.focus-layer'] = str(tmap_lowlevel.get_focus_layer(self._osr))
+            props['tmap.layer-num'] = str(tmap_lowlevel.get_layer_num(self._osr))
+            props['tmap.tile-number'] = str(tmap_lowlevel.get_tile_mumber(self._osr))
+            props['tmap.pixel-size'] = str(tmap_lowlevel.get_pixel_size(self._osr))
+
+            # Calculate MPP (microns per pixel) from scan scale
+            scan_scale = tmap_lowlevel.get_scan_scale(self._osr)
+            if scan_scale == 40:
+                mpp = 0.25  # 40x objective typically has 0.25 μm/pixel
+            elif scan_scale == 20:
+                mpp = 0.5   # 20x objective typically has 0.5 μm/pixel
+            else:
+                mpp = 10.0 / scan_scale  # Rough estimation
+
+            props['openslide.mpp-x'] = str(mpp)
+            props['openslide.mpp-y'] = str(mpp)
+        except:
+            pass
+        return props
 
     @property
     def level_count(self):
@@ -119,7 +155,7 @@ class TmapSlide(AbstractSlide):
 
 
 def main():
-    slide = TmapSlide('path/to/tmap/file')
+    slide = TmapSlide('/jhcnas6/Public/AICCS/ad0fb631-02b4-49b9-9fac-06e8316e3fb4.TMAP')
 
     img = slide.read_region((20000, 6000), 0, (1216, 1216))
     img.save('./read_region.jpg')

@@ -4,7 +4,7 @@ This is an integrated Pathology Image (a.k.a. Whole-slide image) reading library
 
 Current support format:
 
-- .svs
+- .svs 
 - .tif
 - .ndpi
 - .vms
@@ -21,6 +21,9 @@ Current support format:
 This package currently tested and worked on:
 
 - Ubuntu 22.04 LTS, Python 3.11
+- Ubuntu 22.04 LTS, Python 3.10
+- Ubuntu 22.04 LTS, Python 3.9
+- Ubuntu 22.04 LTS, Python 3.8
 - Ubuntu 22.04 LTS, Python 3.7
 - Ubuntu 20.04 LTS, Python 3.8
 
@@ -92,11 +95,13 @@ For more details, please refer to the `example_test_case.py` file.
 
 ## Credits
 
-This package is based on the following projects:  
+This package is based on the following projects and licensed under GPL v2+:  
 
 [Openslide](https://github.com/openslide/openslide)  
 [sdpc-python](https://github.com/WonderLandxD/sdpc-for-python)  
 [tct](https://github.com/liyu10000/tct)  
 [WSI-SDK](https://github.com/yasohasakii/WSI-SDK)
+[bioformats](https://github.com/ome/bioformats)
+[vsi2tif](https://github.com/andreped/vsi2tif)
 
 Many thanks to the authors of these projects.
