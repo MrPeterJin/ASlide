@@ -100,8 +100,8 @@ This package is based on the following projects and licensed under GPL v2+:
 [Openslide](https://github.com/openslide/openslide)  
 [sdpc-python](https://github.com/WonderLandxD/sdpc-for-python)  
 [tct](https://github.com/liyu10000/tct)  
-[WSI-SDK](https://github.com/yasohasakii/WSI-SDK)
-[bioformats](https://github.com/ome/bioformats)
-[vsi2tif](https://github.com/andreped/vsi2tif)
+[WSI-SDK](https://github.com/yasohasakii/WSI-SDK)   
+[bioformats](https://github.com/ome/bioformats)   
+[vsi2tif](https://github.com/andreped/vsi2tif)   
 
 Many thanks to the authors of these projects.
