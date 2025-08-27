@@ -26,9 +26,20 @@ class CustomInstall(install):
         # Handle TMAP files
         target_dir = os.path.join(self.install_lib, 'Aslide', 'tmap', 'lib')
         self.mkpath(target_dir)
-        tmap_files = ['iViewerInterface.h', 'libiViewerSDK.so']
+        tmap_files = ['iViewerInterface.h', 'libiViewerSDK.so', 'openTMAP.so']
         for tmap_file in tmap_files:
             src_file = os.path.join(os.path.dirname(__file__), 'Aslide', 'tmap', 'lib', tmap_file)
+            if os.path.exists(src_file):
+                self.copy_file(src_file, target_dir)
+            else:
+                print(f"Warning: Source file {src_file} not found. Skipping.")
+
+        # Handle MDS files
+        target_dir = os.path.join(self.install_lib, 'Aslide', 'mds', 'lib')
+        self.mkpath(target_dir)
+        mds_files = ['openMDS.so', 'libMDSParser.so']
+        for mds_file in mds_files:
+            src_file = os.path.join(os.path.dirname(__file__), 'Aslide', 'mds', 'lib', mds_file)
             if os.path.exists(src_file):
                 self.copy_file(src_file, target_dir)
             else:
@@ -68,7 +79,8 @@ class CustomInstall(install):
             os.path.join(install_dir, 'Aslide', 'sdpc', 'so'),
             os.path.join(install_dir, 'Aslide', 'sdpc', 'so', 'ffmpeg'),
             os.path.join(install_dir, 'Aslide', 'kfb', 'lib'),
-            os.path.join(install_dir, 'Aslide', 'tmap', 'lib')
+            os.path.join(install_dir, 'Aslide', 'tmap', 'lib'),
+            os.path.join(install_dir, 'Aslide', 'mds', 'lib')
         ]
 
         # Create a setup script that can be sourced
@@ -214,18 +226,19 @@ class CustomInstall(install):
 
 setup(
     name='Aslide',
-    version='1.2.1',
+    version='1.3.0',
     author='MrPeterJin',
     author_email='petergamsing@gmail.com',
     url='https://github.com/MrPeterJin/ASlide',
-    description='A package to read whole-slide image (WSI) files.',
+    description='A comprehensive package to read whole-slide image (WSI) files supporting Openslide, KFB, SDPC, TMAP, MDS, and VSI formats with full DeepZoom support.',
     packages=find_packages(),
     package_data={
         'Aslide': ['*.py'],
         'Aslide.kfb': ['lib/*'],
         'Aslide.tmap': ['lib/*'],
         'Aslide.sdpc': ['so/**/*'],
-        'Aslide.vsi': ['*.py'],
+        'Aslide.vsi': ['*.py', '**/*.py'],
+        'Aslide.mds': ['lib/*'],
     },
     cmdclass={'install': CustomInstall},
     platforms='linux',

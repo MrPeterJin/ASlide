@@ -17,7 +17,7 @@ _lib = cdll.LoadLibrary(soPath)
 
 class _TmapSlide(object):
     def __init__(self, ptr):
-        self._as_parameter = ptr
+        self._as_parameter_ = ptr
         self._valid = True
 
         self._close = close_tmap_file
@@ -49,7 +49,7 @@ def _check_open(result, _func, _args):
         raise lowlevel.OpenSlideUnsupportedFormatError(
             f"Unsupported or missing TMAP image file: {filename}")
     slide = _TmapSlide(c_void_p(result))
-    print(f"Successfully created TmapSlide object: {slide}")
+    # print(f"Successfully created TmapSlide object: {slide}")
     return slide
 
 
@@ -111,10 +111,10 @@ def open_tmap_file(name):
         name_bytes = name
 
     # Debug: print file info
-    print(f"Attempting to open TMAP file: {name}")
-    print(f"File exists: {os.path.exists(name)}")
+    # print(f"Attempting to open TMAP file: {name}")
+    # print(f"File exists: {os.path.exists(name)}")
     if os.path.exists(name):
-        print(f"File size: {os.path.getsize(name)} bytes")
+        # print(f"File size: {os.path.getsize(name)} bytes")
 
         # Check file header
         try:
@@ -126,7 +126,7 @@ def open_tmap_file(name):
             print(f"Error reading file header: {e}")
 
     osr = _open_tmap_file(name_bytes, len(name_bytes))
-    print(f"Library returned: {osr}")
+    # print(f"Library returned: {osr}")
     return osr
 
 

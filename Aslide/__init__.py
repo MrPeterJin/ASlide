@@ -11,7 +11,8 @@ def setup_environment():
         os.path.join(current_path, 'sdpc', 'so'),
         os.path.join(current_path, 'sdpc', 'so', 'ffmpeg'),
         os.path.join(current_path, 'kfb', 'lib'),
-        os.path.join(current_path, 'tmap', 'lib')
+        os.path.join(current_path, 'tmap', 'lib'),
+        os.path.join(current_path, 'mds', 'lib')
     ]
 
     # Add to LD_LIBRARY_PATH
@@ -47,4 +48,11 @@ from . import kfb
 from . import tmap
 from . import sdpc
 from . import vsi
+try:
+    from . import mds
+except ImportError:
+    print("Warning: MDS module not available")
 from . import aslide
+
+# Export the main Slide class for easy access
+from .aslide import Slide
