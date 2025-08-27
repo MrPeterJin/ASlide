@@ -5,6 +5,10 @@ from Aslide.kfb.kfb_slide import KfbSlide
 from Aslide.tmap.tmap_slide import TmapSlide
 from Aslide.sdpc.sdpc_slide import SdpcSlide
 from Aslide.vsi.vsi_slide import VsiSlide
+try:
+    from Aslide.mds.mds_slide import MdsSlide
+except ImportError:
+    MdsSlide = None
 
 
 class Slide(object):
@@ -57,6 +61,14 @@ class Slide(object):
 			except:
 				pass
 
+		# 6. mds
+		if not read_success and self.format in ['.mds', '.MDS'] and MdsSlide:
+			try:
+				self._osr = MdsSlide(filepath)
+				read_success = True
+			except:
+				pass
+
 		if not read_success:
 			raise Exception("UnsupportedFormat or ReadingFailed => %s" % filepath)
 
@@ -102,6 +114,58 @@ class Slide(object):
 	@property
 	def properties(self):
 		return self._osr.properties
+
+	@property
+	def associated_images(self):
+		"""Get associated images"""
+		# Check if we have cached associated images
+		if hasattr(self, '_cached_associated_images'):
+			return self._cached_associated_images
+
+		if hasattr(self._osr, 'associated_images'):
+			assoc = self._osr.associated_images
+
+			# Handle different interface types
+			if callable(assoc):
+				# TMAP-style method interface - convert to dict
+				result = {}
+				for tag in ['thumbnail', 'label', 'macro']:
+					try:
+						img = assoc(tag)
+						if img is not None:
+							result[tag] = img
+					except:
+						pass
+				# Cache the result
+				self._cached_associated_images = result
+				return result
+			else:
+				# Standard dict interface (KFB, SDPC)
+				# For KFB, preload all images to avoid "closed slide" errors
+				if hasattr(assoc, '_keys') and hasattr(assoc, '__getitem__'):
+					# This is likely a KFB _AssociatedImageMap - preload all images
+					result = {}
+					try:
+						keys = assoc._keys()
+						for key in keys:
+							try:
+								result[key] = assoc[key]
+							except:
+								pass
+						# Cache the preloaded result
+						self._cached_associated_images = result
+						return result
+					except:
+						# If preloading fails, return the original object (but don't cache it)
+						return assoc
+				else:
+					# Standard dict (SDPC) - cache it
+					self._cached_associated_images = assoc
+					return assoc
+		else:
+			# Cache empty dict
+			self._cached_associated_images = {}
+			return {}
 
 	def label_image(self, save_path):
 		if self.format in ['.tmap', '.TMAP']:

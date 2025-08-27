@@ -11,8 +11,8 @@ class ADeepZoomGenerator(object):
         if osr.format in ['.kfb', '.KFB']:
             self._dzg = KfbDZG(osr, tile_size, overlap, limit_bounds)
         elif osr.format in ['.sdpc', '.SDPC']:
-            # Pass max_level_size to SDPC DeepZoomGenerator for performance optimization
-            self._dzg = SdpcDZG(osr, tile_size, overlap, limit_bounds, max_level_size)
+            # SDPC DeepZoomGenerator only accepts 4 parameters
+            self._dzg = SdpcDZG(osr, tile_size, overlap, limit_bounds)
         elif osr.format in ['.tmap', '.TMAP']:
             self._dzg = TmapDZG(osr, 256, overlap, limit_bounds)
         elif osr.format in ['.vsi', '.VSI']:
@@ -20,6 +20,11 @@ class ADeepZoomGenerator(object):
             self._dzg = VsiDZG(osr, tile_size, overlap, limit_bounds)
         else:
             self._dzg = OpenSlideDZG(osr, tile_size, overlap, limit_bounds)
+
+    @property
+    def tile_size(self):
+        """The tile size for this Deep Zoom generator."""
+        return getattr(self._dzg, 'tile_size', 254)
 
     @property
     def level_count(self):

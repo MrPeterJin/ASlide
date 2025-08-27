@@ -152,7 +152,31 @@ class SdpcSlide:
 
         return tuple(levelDimensions)
 
+    def get_label_image(self):
+        """Get label image as PIL Image object"""
+        try:
+            wPos = POINTER(c_uint)(c_uint(0))
+            hPos = POINTER(c_uint)(c_uint(0))
+            sizePos = POINTER(c_size_t)(c_size_t(0))
+            rgb_pos = so.GetLabelJpeg(self.sdpc, wPos, hPos, sizePos)
+
+            if rgb_pos and sizePos.contents.value > 0:
+                # Convert to bytes
+                buf = bytearray(rgb_pos[:sizePos.contents.value])
+
+                # Create PIL Image from JPEG bytes
+                from PIL import Image
+                import io
+                image = Image.open(io.BytesIO(buf))
+                return image
+            else:
+                return None
+        except Exception as e:
+            print(f"Error getting label image: {e}")
+            return None
+
     def saveLabelImg(self, save_path):
+        """Save label image to file"""
         wPos = POINTER(c_uint)(c_uint(0))
         hPos = POINTER(c_uint)(c_uint(0))
         sizePos = POINTER(c_size_t)(c_size_t(0))
@@ -161,6 +185,18 @@ class SdpcSlide:
             buf = bytearray(rgb_pos[:sizePos.contents.value])
             f.write(buf)
         f.close()
+
+    @property
+    def associated_images(self):
+        """Get associated images"""
+        result = {}
+
+        # Try to get label image
+        label_img = self.get_label_image()
+        if label_img:
+            result['label'] = label_img
+
+        return result
 
     def close(self):
         try:
