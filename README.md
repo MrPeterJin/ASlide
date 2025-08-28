@@ -4,19 +4,19 @@ This is an integrated Pathology Image (a.k.a. Whole-slide image) reading library
 
 Current support format:
 
-- .svs 
-- .tif
+- .bif
 - .ndpi
-- .vms
-- .vmu
-- .scn
 - .mrxs
+- .tif
 - .tiff
-- .kfb
+- .scn
+- .svs
 - .svslide
 - .sdpc
 - .TMAP
-- .bif
+- .vms
+- .vmu
+- .vsi
 
 This package currently tested and worked on:
 
@@ -29,7 +29,7 @@ This package currently tested and worked on:
 
 ## Pre-requisite
 
-You should have [openslide-python](https://pypi.org/project/openslide-python/) installed as a prerequisite package.
+You should have [openslide-python](https://pypi.org/project/openslide-python/) and [python-bioformats](https://pypi.org/project/bioformats/) installed as a prerequisite package.
 
 ## Installation
 
@@ -95,7 +95,7 @@ For more details, please refer to the `example_test_case.py` file.
 
 ## Credits
 
-This package is based on the following projects and licensed under GPL v2+:  
+This package is based on the following projects and licensed under GPL v3.
 
 [Openslide](https://github.com/openslide/openslide)  
 [sdpc-python](https://github.com/WonderLandxD/sdpc-for-python)  
@@ -103,5 +103,6 @@ This package is based on the following projects and licensed under GPL v2+:
 [WSI-SDK](https://github.com/yasohasakii/WSI-SDK)   
 [bioformats](https://github.com/ome/bioformats)   
 [vsi2tif](https://github.com/andreped/vsi2tif)   
+
 
 Many thanks to the authors of these projects.

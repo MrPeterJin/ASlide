@@ -61,8 +61,8 @@ class Slide(object):
 			except:
 				pass
 
-		# 6. mds
-		if not read_success and self.format in ['.mds', '.MDS'] and MdsSlide:
+		# 6. mds/mdsx
+		if not read_success and self.format in ['.mds', '.MDS', '.mdsx', '.MDSX'] and MdsSlide:
 			try:
 				self._osr = MdsSlide(filepath)
 				read_success = True
@@ -84,16 +84,24 @@ class Slide(object):
 
 	@property
 	def mpp(self):
+		# First try the slide's own mpp property if it exists
+		if hasattr(self._osr, 'mpp') and self._osr.mpp is not None:
+			return self._osr.mpp
+
+		# Fallback to get_scan_scale for compatibility
 		if hasattr(self._osr, 'get_scan_scale'):
 			return self._osr.get_scan_scale
-		else:
-			if hasattr(self._osr, 'properties'):
-				if 'openslide.mpp-x' in self._osr.properties:
-					mpp = float(self._osr.properties['openslide.mpp-x'])
 
-					return 20 if abs(mpp - 0.5) < abs(mpp - 0.25) else 40
-					
-		raise Exception("%s Has no attribute %s" % (self._osr.__class__.__name__, "get_scan_scale"))		
+		# Fallback to properties
+		if hasattr(self._osr, 'properties'):
+			if 'openslide.mpp-x' in self._osr.properties and 'openslide.mpp-y' in self._osr.properties:
+				mpp_x = float(self._osr.properties['openslide.mpp-x'])
+				mpp_y = float(self._osr.properties['openslide.mpp-y'])
+				return (mpp_x + mpp_y) / 2
+			elif 'openslide.mpp-x' in self._osr.properties:
+				return float(self._osr.properties['openslide.mpp-x'])
+
+		raise Exception("%s Has no attribute %s" % (self._osr.__class__.__name__, "mpp"))
 
 	@property
 	def level_count(self):
