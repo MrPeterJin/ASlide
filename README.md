@@ -7,6 +7,7 @@ Current support format:
 - .bif
 - .ndpi
 - .mrxs
+- .qptiff
 - .tif
 - .tiff
 - .scn
@@ -29,7 +30,7 @@ This package currently tested and worked on:
 
 ## Pre-requisite
 
-You should have [openslide-python](https://pypi.org/project/openslide-python/) and [python-bioformats](https://pypi.org/project/bioformats/) installed as a prerequisite package.
+You should have [openslide-python](https://pypi.org/project/openslide-python/), [python-bioformats](https://pypi.org/project/bioformats/) and [qptifffile](https://pypi.org/project/qptifffile/) installed as a prerequisite package.
 
 ## Installation
 
@@ -38,6 +39,18 @@ Since the package is not uploaded to PyPI, you need to install it from source co
 ```bash
 python setup.py install
 ```
+
+## Usage
+
+Just import the package and use it as follows:
+
+```python
+from Aslide.aslide import Slide
+
+slide = Slide('path/to/your/slide')
+```
+
+For more details, please refer to the `example_test_case.py` file.
 
 ## Troubleshooting
 
@@ -75,17 +88,6 @@ Then, after sourcing the config file, and you are good to go:
 source ~/.bashrc
 ```
 
-## Usage
-
-Just import the package and use it as follows:
-
-```python
-from Aslide.aslide import Slide
-
-slide = Slide('path/to/your/slide')
-```
-
-For more details, please refer to the `example_test_case.py` file.
 
 ## Projects Using This Package
 

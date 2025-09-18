@@ -226,11 +226,11 @@ class CustomInstall(install):
 
 setup(
     name='Aslide',
-    version='1.3.1',
+    version='1.4.0',
     author='MrPeterJin',
     author_email='petergamsing@gmail.com',
     url='https://github.com/MrPeterJin/ASlide',
-    description='A comprehensive package to read whole-slide image (WSI) files supporting Openslide, KFB, SDPC, TMAP, MDS, and VSI formats with full DeepZoom support.',
+    description='A comprehensive package to read whole-slide image (WSI) files supporting Openslide, KFB, SDPC, TMAP, MDS, VSI, and QPTiff formats with full DeepZoom support.',
     packages=find_packages(),
     package_data={
         'Aslide': ['*.py'],
@@ -239,10 +239,17 @@ setup(
         'Aslide.sdpc': ['so/**/*'],
         'Aslide.vsi': ['*.py', '**/*.py'],
         'Aslide.mds': ['lib/*'],
+        'Aslide.qptiff': ['*.py'],
     },
     cmdclass={'install': CustomInstall},
     platforms='linux',
-    install_requires=['numpy', 'Pillow', 'openslide-python'],
+    install_requires=[
+        'numpy',
+        'Pillow',
+        'openslide-python',
+        'qptifffile',  # For QPTiff format support
+        'tifffile',    # Required by qptifffile
+    ],
     python_requires='>=3.7',
     classifiers=[
         'Development Status :: 4 - Beta',

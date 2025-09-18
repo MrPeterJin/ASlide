@@ -10,6 +10,11 @@ try:
 except ImportError:
     MdsSlide = None
 
+try:
+    from Aslide.qptiff.qptiff_slide import QptiffSlide
+except ImportError:
+    QptiffSlide = None
+
 
 class Slide(object):
 	def __init__(self, filepath):
@@ -17,15 +22,17 @@ class Slide(object):
 		self.format = os.path.splitext(os.path.basename(filepath))[-1]
 
 		# try reader one by one
+		# Try specific format readers first, then fall back to OpenSlide
 
 		read_success = False
 
-		# 1. openslide
-		try:
-			self._osr = OpenSlide(filepath)
-			read_success = True
-		except:
-			pass
+		# 1. qptiff (try first to avoid OpenSlide reading it as generic TIFF)
+		if not read_success and self.format in ['.qptiff', '.QPTIFF'] and QptiffSlide:
+			try:
+				self._osr = QptiffSlide(filepath)
+				read_success = True
+			except:
+				pass
 
 		# 2. kfb
 		if not read_success and self.format in ['.kfb', '.KFB']:
@@ -65,6 +72,14 @@ class Slide(object):
 		if not read_success and self.format in ['.mds', '.MDS', '.mdsx', '.MDSX'] and MdsSlide:
 			try:
 				self._osr = MdsSlide(filepath)
+				read_success = True
+			except:
+				pass
+
+		# 7. openslide (fallback for generic formats)
+		if not read_success:
+			try:
+				self._osr = OpenSlide(filepath)
 				read_success = True
 			except:
 				pass

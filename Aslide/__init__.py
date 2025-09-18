@@ -52,6 +52,10 @@ try:
     from . import mds
 except ImportError:
     print("Warning: MDS module not available")
+try:
+    from . import qptiff
+except ImportError:
+    print("Warning: QPTiff module not available (qptifffile library required)")
 from . import aslide
 
 # Export the main Slide class for easy access
