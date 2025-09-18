@@ -5,6 +5,7 @@ from Aslide.kfb.kfb_slide import KfbSlide
 from Aslide.tmap.tmap_slide import TmapSlide
 from Aslide.sdpc.sdpc_slide import SdpcSlide
 from Aslide.vsi.vsi_slide import VsiSlide
+from Aslide.tron.tron_slide import TronSlide
 try:
     from Aslide.mds.mds_slide import MdsSlide
 except ImportError:
@@ -76,7 +77,15 @@ class Slide(object):
 			except:
 				pass
 
-		# 7. openslide (fallback for generic formats)
+		# 7. tron
+		if not read_success and self.format in ['.tron', '.TRON']:
+			try:
+				self._osr = TronSlide(filepath)
+				read_success = True
+			except:
+				pass
+
+		# 8. openslide (fallback for generic formats)
 		if not read_success:
 			try:
 				self._osr = OpenSlide(filepath)

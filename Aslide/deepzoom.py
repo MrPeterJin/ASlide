@@ -14,6 +14,11 @@ try:
 except ImportError:
     QptiffDZG = None
 
+try:
+    from Aslide.tron.tron_deepzoom import TronDeepZoomGenerator as TronDZG
+except ImportError:
+    TronDZG = None
+
 
 class ADeepZoomGenerator(object):
     def __init__(self, osr, tile_size=254, overlap=1, limit_bounds=False, max_level_size=10000):
@@ -30,6 +35,9 @@ class ADeepZoomGenerator(object):
         elif osr.format in ['.qptiff', '.QPTIFF'] and QptiffDZG:
             # QPTiff format uses specialized DeepZoom generator
             self._dzg = QptiffDZG(osr, tile_size, overlap, limit_bounds)
+        elif osr.format in ['.tron', '.TRON'] and TronDZG:
+            # TRON format uses specialized DeepZoom generator - native tile support
+            self._dzg = TronDZG(osr, tile_size, overlap, limit_bounds)
         else:
             self._dzg = OpenSlideDZG(osr, tile_size, overlap, limit_bounds)
 

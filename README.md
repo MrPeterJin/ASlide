@@ -10,6 +10,7 @@ Current support format:
 - .qptiff
 - .tif
 - .tiff
+- .tron
 - .scn
 - .svs
 - .svslide
