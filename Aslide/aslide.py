@@ -5,7 +5,7 @@ from Aslide.kfb.kfb_slide import KfbSlide
 from Aslide.tmap.tmap_slide import TmapSlide
 from Aslide.sdpc.sdpc_slide import SdpcSlide
 from Aslide.vsi.vsi_slide import VsiSlide
-from Aslide.tron.tron_slide import TronSlide
+from Aslide.tron.slide import TronSlide
 try:
     from Aslide.mds.mds_slide import MdsSlide
 except ImportError:

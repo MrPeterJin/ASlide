@@ -15,7 +15,7 @@ except ImportError:
     QptiffDZG = None
 
 try:
-    from Aslide.tron.tron_deepzoom import TronDeepZoomGenerator as TronDZG
+    from Aslide.tron.deepzoom import TronDeepZoomGenerator as TronDZG
 except ImportError:
     TronDZG = None
 

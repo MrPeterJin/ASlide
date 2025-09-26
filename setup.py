@@ -45,6 +45,17 @@ class CustomInstall(install):
             else:
                 print(f"Warning: Source file {src_file} not found. Skipping.")
 
+        # Handle TRON files
+        target_dir = os.path.join(self.install_lib, 'Aslide', 'tron', 'lib')
+        self.mkpath(target_dir)
+        tron_files = ['libtronc.so', 'tronc.h']
+        for tron_file in tron_files:
+            src_file = os.path.join(os.path.dirname(__file__), 'Aslide', 'tron', 'lib', tron_file)
+            if os.path.exists(src_file):
+                self.copy_file(src_file, target_dir)
+            else:
+                print(f"Warning: Source file {src_file} not found. Skipping.")
+
         # Handle SDPC files
         src_base_dir = os.path.join(os.path.dirname(__file__), 'Aslide', 'sdpc', 'so')
         dst_base_dir = os.path.join(self.install_lib, 'Aslide', 'sdpc', 'so')
@@ -80,7 +91,8 @@ class CustomInstall(install):
             os.path.join(install_dir, 'Aslide', 'sdpc', 'so', 'ffmpeg'),
             os.path.join(install_dir, 'Aslide', 'kfb', 'lib'),
             os.path.join(install_dir, 'Aslide', 'tmap', 'lib'),
-            os.path.join(install_dir, 'Aslide', 'mds', 'lib')
+            os.path.join(install_dir, 'Aslide', 'mds', 'lib'),
+            os.path.join(install_dir, 'Aslide', 'tron', 'lib')
         ]
 
         # Create a setup script that can be sourced
@@ -226,7 +238,7 @@ class CustomInstall(install):
 
 setup(
     name='Aslide',
-    version='1.4.0',
+    version='1.4.1',
     author='MrPeterJin',
     author_email='petergamsing@gmail.com',
     url='https://github.com/MrPeterJin/ASlide',
@@ -240,7 +252,7 @@ setup(
         'Aslide.vsi': ['*.py', '**/*.py'],
         'Aslide.mds': ['lib/*'],
         'Aslide.qptiff': ['*.py'],
-        'Aslide.tron': ['*.py'],
+        'Aslide.tron': ['*.py', 'lib/*'],
     },
     cmdclass={'install': CustomInstall},
     platforms='linux',
@@ -249,7 +261,7 @@ setup(
         'Pillow',
         'openslide-python',
         'qptifffile',  # For QPTiff format support
-        'tifffile',    # Required by qptifffile
+        'tifffile',    # For QPTiff format support
     ],
     python_requires='>=3.7',
     classifiers=[
