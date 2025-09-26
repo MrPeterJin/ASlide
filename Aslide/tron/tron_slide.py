@@ -45,6 +45,10 @@ class TronSlide:
         self._properties = {}
         self._associated_images = {}
         self._tile_size = (256, 256)  # Default tile size, will be determined from actual tiles
+
+        # Initialize MPP values
+        self.mpp_x = None
+        self.mpp_y = None
         
         # Open and analyze the TRON file
         self._open_tron_file()
@@ -160,10 +164,10 @@ class TronSlide:
                         # For now, just store basic info
                         self._properties['tron.format'] = 'TRON'
                         self._properties['tron.version'] = '1.0'
-                        
-                        # Try to read more metadata (format may vary)
-                        # This would need to be reverse-engineered for full support
-                        
+
+                        # Try to parse MPP information from binary data
+                        self._parse_mpp_from_binary(f)
+
             except Exception as e:
                 # If we can't read metadata, continue without it
                 pass
@@ -172,7 +176,146 @@ class TronSlide:
         self._properties['tron.level-count'] = str(self._level_count)
         self._properties['tron.tile-width'] = str(self._tile_size[0])
         self._properties['tron.tile-height'] = str(self._tile_size[1])
-    
+
+        # Add MPP to properties if available
+        if self.mpp_x is not None:
+            self._properties['openslide.mpp-x'] = str(self.mpp_x)
+        if self.mpp_y is not None:
+            self._properties['openslide.mpp-y'] = str(self.mpp_y)
+
+    def _parse_mpp_from_binary(self, file_handle):
+        """Parse MPP information from binary TRON metadata."""
+        try:
+            # Reset to beginning after header
+            file_handle.seek(4)
+
+            # Read the entire binary content
+            binary_data = file_handle.read()
+
+            # Try to find common MPP-related patterns in the binary data
+            # Look for floating point values that might represent pixel size
+            import struct
+
+            # Common patterns to search for:
+            # 1. Look for "PixelSize" or similar strings
+            # 2. Look for floating point values in reasonable MPP range (0.1 - 10.0)
+
+            # Search for text patterns first
+            text_patterns = [
+                b'PixelSizeX', b'PixelSizeY',
+                b'pixelsize', b'pixel_size',
+                b'MPP', b'mpp',
+                b'Resolution', b'resolution'
+            ]
+
+            for pattern in text_patterns:
+                pos = binary_data.find(pattern)
+                if pos != -1:
+                    # Found a pattern, try to extract nearby float values
+                    self._extract_mpp_near_position(binary_data, pos)
+                    break
+
+            # If no text patterns found, try to find reasonable float values
+            if self.mpp_x is None or self.mpp_y is None:
+                self._extract_mpp_from_floats(binary_data)
+
+        except Exception as e:
+            # If parsing fails, continue without MPP
+            pass
+
+    def _extract_mpp_near_position(self, binary_data, position):
+        """Extract MPP values near a found text pattern."""
+        try:
+            import struct
+
+            # Search in a window around the found position
+            start = max(0, position - 100)
+            end = min(len(binary_data), position + 100)
+            window = binary_data[start:end]
+
+            candidates = []
+
+            # Try to find float values in this window
+            for i in range(0, len(window) - 4, 1):
+                try:
+                    # Try little-endian float
+                    value = struct.unpack('<f', window[i:i+4])[0]
+                    if 0.05 <= value <= 2.0:  # More restrictive MPP range
+                        candidates.append(value)
+                except:
+                    continue
+
+            # If we found candidates, use the most reasonable ones
+            if candidates:
+                # Sort candidates and look for similar values (likely X and Y)
+                candidates.sort()
+
+                # Look for pairs of similar values
+                for i, val1 in enumerate(candidates):
+                    for val2 in candidates[i+1:]:
+                        if abs(val1 - val2) < 0.1:  # Very similar values
+                            self.mpp_x = val1
+                            self.mpp_y = val2
+                            return
+
+                # If no similar pairs, use the first reasonable value for both
+                if candidates:
+                    self.mpp_x = candidates[0]
+                    self.mpp_y = candidates[0]  # Assume square pixels
+
+        except Exception:
+            pass
+
+    def _extract_mpp_from_floats(self, binary_data):
+        """Extract MPP by scanning for reasonable float values."""
+        try:
+            import struct
+
+            candidates = []
+
+            # Scan for float values in reasonable MPP range
+            for i in range(0, len(binary_data) - 4, 4):
+                try:
+                    # Try little-endian float
+                    value = struct.unpack('<f', binary_data[i:i+4])[0]
+                    if 0.05 <= value <= 2.0:  # More restrictive MPP range
+                        candidates.append(value)
+                except:
+                    continue
+
+            # If we found candidates, use statistical analysis
+            if candidates:
+                from collections import Counter
+
+                # Round to 3 decimal places to group similar values
+                rounded_candidates = [round(c, 3) for c in candidates]
+                counter = Counter(rounded_candidates)
+                most_common = counter.most_common(10)
+
+                # Look for the most reasonable MPP values
+                # Prefer values that appear multiple times and are in typical range
+                reasonable_values = []
+                for value, count in most_common:
+                    if 0.08 <= value <= 0.5 and count >= 2:  # Typical microscopy MPP range
+                        reasonable_values.append(value)
+
+                if reasonable_values:
+                    # Use the most common reasonable value
+                    self.mpp_x = reasonable_values[0]
+                    # Look for a similar value for Y, or use the same
+                    if len(reasonable_values) > 1:
+                        # Find the closest value to mpp_x
+                        closest = min(reasonable_values[1:], key=lambda x: abs(x - self.mpp_x))
+                        if abs(closest - self.mpp_x) < 0.05:  # Very similar
+                            self.mpp_y = closest
+                        else:
+                            self.mpp_y = self.mpp_x  # Assume square pixels
+                    else:
+                        self.mpp_y = self.mpp_x  # Assume square pixels
+
+        except Exception:
+            pass
+
     def _load_associated_images(self):
         """Load associated images (label, macro, thumbnail, etc.)."""
         associated_files = ['label', 'macro', 'thumbnail', 'sample', 'blank']
