@@ -1,4 +1,26 @@
-recursive-include Aslide/kfb *.so
-recursive-include Aslide/tmap *.so
+# Include all Python files
+recursive-include Aslide *.py
+
+# Include library files
+recursive-include Aslide/kfb/lib *.so
+recursive-include Aslide/tmap/lib *.so
 recursive-include Aslide/tmap *.h
-recursive-include Aslide/sdpc/so *
+recursive-include Aslide/sdpc/lib *
+recursive-include Aslide/sdpc/include *
+recursive-include Aslide/sdpc *.py
+recursive-include Aslide/mds/lib *.so
+recursive-include Aslide/tron/lib *.so
+recursive-include Aslide/tron *.h
+
+# Include VSI files explicitly
+recursive-include Aslide/vsi *.py
+include Aslide/vsi/vsi_slide.py
+include Aslide/vsi/bioformats_vsi_slide.py
+include Aslide/vsi/__init__.py
+
+# Include QPTiff files
+recursive-include Aslide/qptiff *.py
+
+# Include documentation
+include README.md
+include LICENSE

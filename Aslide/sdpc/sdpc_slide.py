@@ -1,172 +1,207 @@
-import numpy.ctypeslib as npCtypes
-import ctypes
+import numpy as np
 from ctypes import *
 import gc
-import os
-import sys
-import numpy as np
 from PIL import Image
-from .Sdpc_struct import SqSdpcInfo
-
-
-# import dll file
-dirname, _ = os.path.split(os.path.abspath(__file__))
-sys.path.append(os.path.join(dirname, 'so'))
-soPath = os.path.join(dirname, 'so/libDecodeSdpc.so')
-
-# load dll
-so = ctypes.CDLL(soPath)
-so.GetLayerInfo.restype = POINTER(c_char)
-so.SqGetRoiRgbOfSpecifyLayer.argtypes = [POINTER(SqSdpcInfo), POINTER(POINTER(c_uint8)),
-                                             c_int, c_int, c_uint, c_uint, c_int]
-so.SqGetRoiRgbOfSpecifyLayer.restype = c_int
-so.SqOpenSdpc.restype = POINTER(SqSdpcInfo)
-so.GetLabelJpeg.argtypes = [POINTER(SqSdpcInfo), POINTER(c_uint), POINTER(c_uint), POINTER(c_size_t)]
-so.GetLabelJpeg.restype = POINTER(c_uint8)
+import io
+from .sdpc_bindings import (
+    sdpc_sdk, SDPCError, SDPCWSIType, ColorStyle,
+    c_int32
+)
 
 
 class SdpcSlide:
+    """
+    SDPC slide reader using the native SDPC SDK
+    """
 
     def __init__(self, sdpcPath):
-        self.sdpc = self.readSdpc(sdpcPath)
-        self.level_count = self.getLevelCount()
-        self.level_downsamples = self.getLevelDownsamples()
-        self.level_dimensions = self.getLevelDimensions()
-        self.scan_magnification = self.readSdpc(sdpcPath).contents.picHead.contents.rate
-        self.sampling_rate = self.readSdpc(sdpcPath).contents.picHead.contents.scale
-        self.properties = {'openslide.mpp-t': self.sampling_rate, 'openslide.mpp-x': self.sampling_rate, 'openslide.vendor': 'TEKSQRAY'} # maintain consistency with openslide API
+        """Initialize SDPC slide reader"""
+        self.slide_path = sdpcPath
+        self.slide = None
+        self._closed = False  # Track if slide has been closed
+        self._level_count = None
+        self._level_dimensions = None
+        self._level_downsamples = None
+        self._properties = None
+
+        # Open the slide
+        status = c_int()
+        self.slide = sdpc_sdk.sqrayslide_open(
+            sdpcPath.encode('utf-8'), byref(status)
+        )
+
+        if not self.slide or status.value != SDPCError.SqSuccess:
+            error_msg = f"Failed to open SDPC file: {sdpcPath}, error code: {status.value}"
+            raise RuntimeError(error_msg)
+
+        # Initialize cached properties
+        self._init_properties()
+
+    def _init_properties(self):
+        """Initialize cached properties"""
+        # Get basic properties
+        mpp_x = c_double()
+        mpp_y = c_double()
+        sdpc_sdk.sqrayslide_get_mpp(self.slide, byref(mpp_x), byref(mpp_y))
+
+        magnification = c_float()
+        sdpc_sdk.sqrayslide_get_magnification(self.slide, byref(magnification))
+
+        # Cache properties for openslide compatibility
+        self._properties = {
+            'openslide.mpp-x': mpp_x.value,
+            'openslide.mpp-y': mpp_y.value,
+            'openslide.vendor': 'TEKSQRAY',
+            'sdpc.magnification': magnification.value
+        }
+
+    def _check_closed(self):
+        """Check if slide is closed and raise exception if so"""
+        if getattr(self, '_closed', False) or not self.slide:
+            raise RuntimeError("Slide has been closed")
+
+    @property
+    def level_count(self):
+        """Get the number of levels in the slide"""
+        self._check_closed()
+        if self._level_count is None:
+            self._level_count = sdpc_sdk.sqrayslide_get_level_count(self.slide)
+        return self._level_count
+
+    @property
+    def level_dimensions(self):
+        """Get dimensions for each level"""
+        if self._level_dimensions is None:
+            dimensions = []
+            for level in range(self.level_count):
+                width = c_int32()
+                height = c_int32()
+                sdpc_sdk.sqrayslide_get_level_size(
+                    self.slide, level, byref(width), byref(height)
+                )
+                dimensions.append((width.value, height.value))
+            self._level_dimensions = tuple(dimensions)
+        return self._level_dimensions
+
+    @property
+    def level_downsamples(self):
+        """Get downsample factors for each level"""
+        if self._level_downsamples is None:
+            downsamples = []
+            for level in range(self.level_count):
+                downsample = sdpc_sdk.sqrayslide_get_level_downsample(self.slide, level)
+                downsamples.append(downsample)
+            self._level_downsamples = tuple(downsamples)
+        return self._level_downsamples
 
     @property
     def dimensions(self):
         """Return the dimensions of the highest resolution level (level 0)."""
         return self.level_dimensions[0] if self.level_dimensions else (0, 0)
 
-    def getRgb(self, rgbPos, width, height):
-
-        intValue = npCtypes.as_array(rgbPos, (height, width, 3))
-        return intValue
-
-    def readSdpc(self, fileName):
-
-        sdpc = so.SqOpenSdpc(c_char_p(bytes(fileName, 'gbk')))
-        sdpc.contents.fileName = bytes(fileName, 'gbk')
-
-        return sdpc
-
-    def getLevelCount(self):
-
-        return self.sdpc.contents.picHead.contents.hierarchy
-
-    def getLevelDownsamples(self):
-
-        levelCount = self.getLevelCount()
-        rate = self.sdpc.contents.picHead.contents.scale
-        rate = 1 / rate
-        _list = []
-        for i in range(levelCount):
-            _list.append(rate ** i)
-        return tuple(_list)
+    @property
+    def properties(self):
+        """Get slide properties"""
+        return self._properties
 
     def get_best_level_for_downsample(self, downsample):
+        """Get the best level for a given downsample factor"""
+        # First try the SDK function
+        sdk_result = sdpc_sdk.sqrayslide_get_best_level_for_downsample(self.slide, downsample)
 
-        preset = [i*i for i in self.level_downsamples]
-        err = [abs(i-downsample) for i in preset]
-        level = err.index(min(err))
-        return level
+        # If SDK always returns 0, implement our own logic (OpenSlide's approach)
+        if sdk_result == 0 and downsample > 1.0:
+            # Find the level with downsample closest to but not exceeding the target
+            best_level = 0
+            best_diff = float('inf')
+
+            for level in range(self.level_count):
+                level_downsample = 1.0 / self.level_downsamples[level]  # Convert to actual downsample
+                if level_downsample <= downsample:
+                    diff = downsample - level_downsample
+                    if diff < best_diff:
+                        best_diff = diff
+                        best_level = level
+
+            return best_level
+
+        return sdk_result
 
     def read_region(self, location, level, size):
+        """
+        Read a region from the slide
 
+        Args:
+            location: (x, y) tuple of the top-left corner in level 0 coordinates
+            level: pyramid level to read from
+            size: (width, height) tuple of the region size
+
+        Returns:
+            PIL Image object
+        """
+        self._check_closed()
         startX, startY = location
-        scale = self.level_downsamples[level]
-        startX = int(startX / scale)
-        startY = int(startY / scale)
-
         width, height = size
 
-        rgbPos = POINTER(c_uint8)()
-        rgbPosPointer = byref(rgbPos)
-        try:
-            result = so.SqGetRoiRgbOfSpecifyLayer(self.sdpc, rgbPosPointer, width, height, startX, startY, level)
-            if result != 0:
-                # if result != 0, raise an exception
-                raise Exception("Failed to read region")
+        # Validate parameters
+        if level < 0 or level >= self.level_count:
+            raise ValueError(f"Invalid level: {level}")
 
-            rgb = self.getRgb(rgbPos, width, height)[..., ::-1]
-            rgbCopy = rgb.copy()
+        if width <= 0 or height <= 0:
+            raise ValueError(f"Invalid size: {size}")
 
-            img = Image.fromarray(rgbCopy)
-            return img
-        finally:
-            # Ensure resources are released
-            if rgbPos:
-                so.Dispose(rgbPos)
+        # Allocate buffer for BGRA data
+        buffer_size = width * height * 4  # 4 bytes per pixel (BGRA)
+        bgra_buffer = (c_ubyte * buffer_size)()
 
-            del rgbPos
-            del rgbPosPointer
+        # Read region as BGRA
+        success = sdpc_sdk.sqrayslide_read_region_bgra(
+            self.slide, bgra_buffer, startX, startY, width, height, level
+        )
 
-            gc.collect()
+        if not success:
+            raise RuntimeError(f"Failed to read region at ({startX}, {startY}) with size ({width}, {height}) at level {level}")
+
+        # Convert BGRA buffer to numpy array
+        bgra_array = np.frombuffer(bgra_buffer, dtype=np.uint8)
+        bgra_array = bgra_array.reshape((height, width, 4))
+
+        # Convert BGRA to RGB (drop alpha channel and swap B and R)
+        rgb_array = bgra_array[:, :, [2, 1, 0]]  # BGR -> RGB
+
+        # Create PIL Image
+        img = Image.fromarray(rgb_array, 'RGB')
+        return img
 
     def get_thumbnail(self, thumbnail_size):
-        thumbnail = self.read_region((0, 0), len(self.level_dimensions) - 1, self.level_dimensions[-1])
-        thumbnail = thumbnail.resize(thumbnail_size)
+        """Get a thumbnail of the slide"""
+        # Read from the highest level (lowest resolution)
+        highest_level = self.level_count - 1
+        thumbnail = self.read_region((0, 0), highest_level, self.level_dimensions[highest_level])
+        thumbnail = thumbnail.resize(thumbnail_size, Image.Resampling.LANCZOS)
         return thumbnail
-
-    def getLevelDimensions(self):
-
-        def findStrIndex(subStr, str):
-            index1 = str.find(subStr)
-            index2 = str.find(subStr, index1 + 1)
-            index3 = str.find(subStr, index2 + 1)
-            index4 = str.find(subStr, index3 + 1)
-            return index1, index2, index3, index4
-
-        levelCount = self.getLevelCount()
-        levelDimensions = []
-        for level in range(levelCount):
-            layerInfo = so.GetLayerInfo(self.sdpc, level)
-            try:
-                count = 0
-                byteList = []
-                while (ord(layerInfo[count]) != 0):
-                    byteList.append(layerInfo[count])
-                    count += 1
-
-                strList = [byteValue.decode('utf-8') for byteValue in byteList]
-                str = ''.join(strList)
-
-                equal1, equal2, equal3, equal4 = findStrIndex("=", str)
-                line1, line2, line3, line4 = findStrIndex("|", str)
-
-                rawWidth = int(str[equal1 + 1:line1])
-                rawHeight = int(str[equal2 + 1:line2])
-                boundWidth = int(str[equal3 + 1:line3])
-                boundHeight = int(str[equal4 + 1:line4])
-                w, h = rawWidth - boundWidth, rawHeight - boundHeight
-                levelDimensions.append((w, h))
-            finally:
-                # 释放 layerInfo 资源
-                if hasattr(so, 'FreeLayerInfo'):
-                    so.FreeLayerInfo(layerInfo)
-                elif hasattr(so, 'Dispose'):
-                    so.Dispose(layerInfo)
-
-        return tuple(levelDimensions)
 
     def get_label_image(self):
         """Get label image as PIL Image object"""
         try:
-            wPos = POINTER(c_uint)(c_uint(0))
-            hPos = POINTER(c_uint)(c_uint(0))
-            sizePos = POINTER(c_size_t)(c_size_t(0))
-            rgb_pos = so.GetLabelJpeg(self.sdpc, wPos, hPos, sizePos)
+            width = c_int32()
+            height = c_int32()
+            data = POINTER(c_ubyte)()
+            data_size = c_int32()
 
-            if rgb_pos and sizePos.contents.value > 0:
+            # Try to get label image (imageType=0 for label)
+            success = sdpc_sdk.sqrayslide_read_label_jpeg(
+                self.slide, 0, byref(width), byref(height), byref(data), byref(data_size)
+            )
+
+            if success and data and data_size.value > 0:
                 # Convert to bytes
-                buf = bytearray(rgb_pos[:sizePos.contents.value])
+                buf = bytearray(data[:data_size.value])
+
+                # Free the memory allocated by the library
+                sdpc_sdk.sqrayslide_free_memory(data)
 
                 # Create PIL Image from JPEG bytes
-                from PIL import Image
-                import io
                 image = Image.open(io.BytesIO(buf))
                 return image
             else:
@@ -177,14 +212,28 @@ class SdpcSlide:
 
     def saveLabelImg(self, save_path):
         """Save label image to file"""
-        wPos = POINTER(c_uint)(c_uint(0))
-        hPos = POINTER(c_uint)(c_uint(0))
-        sizePos = POINTER(c_size_t)(c_size_t(0))
-        rgb_pos = so.GetLabelJpeg(self.sdpc, wPos, hPos, sizePos)
-        with open(save_path, 'bw') as f:
-            buf = bytearray(rgb_pos[:sizePos.contents.value])
-            f.write(buf)
-        f.close()
+        try:
+            width = c_int32()
+            height = c_int32()
+            data = POINTER(c_ubyte)()
+            data_size = c_int32()
+
+            success = sdpc_sdk.sqrayslide_read_label_jpeg(
+                self.slide, 0, byref(width), byref(height), byref(data), byref(data_size)
+            )
+
+            if success and data and data_size.value > 0:
+                with open(save_path, 'wb') as f:
+                    buf = bytearray(data[:data_size.value])
+                    f.write(buf)
+
+                # Free the memory allocated by the library
+                sdpc_sdk.sqrayslide_free_memory(data)
+            else:
+                raise RuntimeError("Failed to get label image")
+        except Exception as e:
+            print(f"Error saving label image: {e}")
+            raise
 
     @property
     def associated_images(self):
@@ -196,15 +245,137 @@ class SdpcSlide:
         if label_img:
             result['label'] = label_img
 
+        # Try to get thumbnail image (imageType=1 for thumbnail)
+        try:
+            width = c_int32()
+            height = c_int32()
+            data = POINTER(c_ubyte)()
+            data_size = c_int32()
+
+            success = sdpc_sdk.sqrayslide_read_label_jpeg(
+                self.slide, 1, byref(width), byref(height), byref(data), byref(data_size)
+            )
+
+            if success and data and data_size.value > 0:
+                buf = bytearray(data[:data_size.value])
+                sdpc_sdk.sqrayslide_free_memory(data)
+                thumbnail_img = Image.open(io.BytesIO(buf))
+                result['thumbnail'] = thumbnail_img
+        except Exception:
+            pass  # Thumbnail is optional
+
+        # Try to get macro image (imageType=2 for macro)
+        try:
+            width = c_int32()
+            height = c_int32()
+            data = POINTER(c_ubyte)()
+            data_size = c_int32()
+
+            success = sdpc_sdk.sqrayslide_read_label_jpeg(
+                self.slide, 2, byref(width), byref(height), byref(data), byref(data_size)
+            )
+
+            if success and data and data_size.value > 0:
+                buf = bytearray(data[:data_size.value])
+                sdpc_sdk.sqrayslide_free_memory(data)
+                macro_img = Image.open(io.BytesIO(buf))
+                result['macro'] = macro_img
+        except Exception:
+            pass  # Macro is optional
+
         return result
 
     def close(self):
+        """Close the slide and free resources"""
+        # Check if already closed to prevent double-free
+        if getattr(self, '_closed', False):
+            return
+
         try:
-            if hasattr(self, 'sdpc') and self.sdpc:
-                so.SqCloseSdpc(self.sdpc)
-                self.sdpc = None
+            if hasattr(self, 'slide') and self.slide:
+                sdpc_sdk.sqrayslide_close(self.slide)
+                self.slide = None
         except Exception as e:
             print(f"Error closing SDPC file: {e}")
         finally:
-            # 强制清理内存
+            # Mark as closed
+            self._closed = True
+            # Clear cached properties
+            self._level_count = None
+            self._level_dimensions = None
+            self._level_downsamples = None
+            self._properties = None
             gc.collect()
+
+    def __enter__(self):
+        """Context manager entry"""
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        """Context manager exit"""
+        self.close()
+        return False  # Don't suppress exceptions
+
+    def __del__(self):
+        """Destructor - safely close if not already closed"""
+        try:
+            # Only close if not already closed and slide exists
+            if not getattr(self, '_closed', False) and hasattr(self, 'slide') and self.slide:
+                self.close()
+        except Exception:
+            # Silently ignore errors during destruction to prevent crashes
+            pass
+
+    # Additional utility methods
+    def get_tile_size(self):
+        """Get the tile size used by the slide"""
+        width = c_int32()
+        height = c_int32()
+        sdpc_sdk.sqrayslide_get_tile_size(self.slide, byref(width), byref(height))
+        return (width.value, height.value)
+
+    def get_barcode(self):
+        """Get the barcode of the slide if available"""
+        barcode_ptr = sdpc_sdk.sqrayslide_get_barcode(self.slide)
+        if barcode_ptr:
+            return barcode_ptr.decode('utf-8')
+        return None
+
+    def get_slide_type(self):
+        """Get the slide type (Brightfield or Fluorescence)"""
+        slide_type = sdpc_sdk.sqrayslide_get_type(self.slide)
+        return "Brightfield" if slide_type == SDPCWSIType.Brightfield else "Fluorescence"
+
+    def apply_color_correction(self, apply=True, style="Real"):
+        """
+        Apply or disable color correction
+
+        Args:
+            apply: Whether to apply color correction
+            style: Color correction style ("Real" or "Gorgeous")
+        """
+        style_value = ColorStyle.Real if style == "Real" else ColorStyle.Gorgeous
+        sdpc_sdk.sqrayslide_apply_color_correction(self.slide, apply, style_value)
+
+    def set_jpeg_quality(self, quality):
+        """
+        Set JPEG compression quality for tile/region reading
+
+        Args:
+            quality: Quality value from 1-99 (higher is better quality)
+        """
+        if not 1 <= quality <= 99:
+            raise ValueError("Quality must be between 1 and 99")
+        sdpc_sdk.sqrayslide_set_jpeg_quality(self.slide, quality)
+
+    def get_channel_count(self):
+        """Get the number of channels (for fluorescence slides)"""
+        return sdpc_sdk.sqrayslide_get_channel_count(self.slide)
+
+    def get_plane_count(self):
+        """Get the number of focal planes"""
+        return sdpc_sdk.sqrayslide_get_plane_count(self.slide)
+
+    def get_plane_space_between(self):
+        """Get the physical distance between focal planes in micrometers"""
+        return sdpc_sdk.sqrayslide_get_plane_space_between(self.slide)

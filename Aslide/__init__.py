@@ -8,12 +8,21 @@ def setup_environment():
     """Set up environment variables for Aslide."""
     current_path = os.path.dirname(os.path.abspath(__file__))
     lib_paths = [
-        os.path.join(current_path, 'sdpc', 'so'),
-        os.path.join(current_path, 'sdpc', 'so', 'ffmpeg'),
+        os.path.join(current_path, 'sdpc', 'lib'),
         os.path.join(current_path, 'kfb', 'lib'),
         os.path.join(current_path, 'tmap', 'lib'),
         os.path.join(current_path, 'mds', 'lib')
     ]
+
+    # Include optional subdirectories if they exist
+    optional_subdirs = [
+        os.path.join(current_path, 'sdpc', 'lib', 'ffmpeg'),
+        os.path.join(current_path, 'sdpc', 'so', 'ffmpeg')
+    ]
+
+    for subdir in optional_subdirs:
+        if os.path.isdir(subdir):
+            lib_paths.append(subdir)
 
     # Add to LD_LIBRARY_PATH
     current_ld_path = os.environ.get("LD_LIBRARY_PATH", "")
@@ -48,10 +57,8 @@ from . import kfb
 from . import tmap
 from . import sdpc
 from . import vsi
-try:
-    from . import mds
-except ImportError:
-    print("Warning: MDS module not available")
+from . import mds
+
 try:
     from . import qptiff
 except ImportError:

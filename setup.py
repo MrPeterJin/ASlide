@@ -56,9 +56,9 @@ class CustomInstall(install):
             else:
                 print(f"Warning: Source file {src_file} not found. Skipping.")
 
-        # Handle SDPC files
-        src_base_dir = os.path.join(os.path.dirname(__file__), 'Aslide', 'sdpc', 'so')
-        dst_base_dir = os.path.join(self.install_lib, 'Aslide', 'sdpc', 'so')
+        # Handle SDPC files (native SDPC SDK)
+        src_base_dir = os.path.join(os.path.dirname(__file__), 'Aslide', 'sdpc', 'lib')
+        dst_base_dir = os.path.join(self.install_lib, 'Aslide', 'sdpc', 'lib')
 
         if not os.path.exists(src_base_dir):
             print(f"Warning: Source directory {src_base_dir} not found. Skipping SDPC files.")
@@ -78,22 +78,67 @@ class CustomInstall(install):
                 src_file = os.path.join(root, file)
                 self.copy_file(src_file, target_subdir)
 
+        # Copy SDPC headers (include directory)
+        include_src_dir = os.path.join(os.path.dirname(__file__), 'Aslide', 'sdpc', 'include')
+        include_dst_dir = os.path.join(self.install_lib, 'Aslide', 'sdpc', 'include')
+
+        if not os.path.exists(include_src_dir):
+            print(f"Warning: Source directory {include_src_dir} not found. Skipping SDPC headers.")
+        else:
+            self.mkpath(include_dst_dir)
+            for root, dirs, files in os.walk(include_src_dir):
+                rel_path = os.path.relpath(root, include_src_dir)
+                if rel_path == '.':
+                    target_subdir = include_dst_dir
+                else:
+                    target_subdir = os.path.join(include_dst_dir, rel_path)
+                self.mkpath(target_subdir)
+
+                for file in files:
+                    src_file = os.path.join(root, file)
+                    self.copy_file(src_file, target_subdir)
+
         self.setup_environment_variables()
+
+    def _collect_library_paths(self, install_dir):
+        """Collect all directories that contain shared libraries for runtime loading."""
+        vendors = [
+            ('sdpc', 'lib'),
+            ('kfb', 'lib'),
+            ('tmap', 'lib'),
+            ('mds', 'lib'),
+            ('tron', 'lib')
+        ]
+
+        lib_paths = []
+        seen = set()
+
+        def add_path(path):
+            if path not in seen and os.path.isdir(path):
+                seen.add(path)
+                lib_paths.append(path)
+
+        for vendor in vendors:
+            base_dir = os.path.join(install_dir, 'Aslide', *vendor)
+            if not os.path.isdir(base_dir):
+                continue
+
+            # Always include the base directory even if shared libraries are nested
+            add_path(base_dir)
+
+            for root, _, files in os.walk(base_dir):
+                if any(file.endswith('.so') for file in files):
+                    add_path(root)
+
+        return lib_paths
 
     def setup_environment_variables(self):
         """Set up environment variables for the installed libraries."""
         # Get the installation directory
         install_dir = os.path.abspath(self.install_lib)
 
-        # Paths to add to LD_LIBRARY_PATH
-        lib_paths = [
-            os.path.join(install_dir, 'Aslide', 'sdpc', 'so'),
-            os.path.join(install_dir, 'Aslide', 'sdpc', 'so', 'ffmpeg'),
-            os.path.join(install_dir, 'Aslide', 'kfb', 'lib'),
-            os.path.join(install_dir, 'Aslide', 'tmap', 'lib'),
-            os.path.join(install_dir, 'Aslide', 'mds', 'lib'),
-            os.path.join(install_dir, 'Aslide', 'tron', 'lib')
-        ]
+        # Paths to add to LD_LIBRARY_PATH (including nested directories with shared libs)
+        lib_paths = self._collect_library_paths(install_dir)
 
         # Create a setup script that can be sourced
         setup_script_path = os.path.join(install_dir, 'Aslide', 'setup_env.sh')
@@ -103,7 +148,10 @@ class CustomInstall(install):
 
             # Add the library paths to LD_LIBRARY_PATH
             lib_paths_str = ':'.join(lib_paths)
-            f.write(f'export LD_LIBRARY_PATH={lib_paths_str}:$LD_LIBRARY_PATH\n')
+            if lib_paths_str:
+                f.write(f'export LD_LIBRARY_PATH={lib_paths_str}:$LD_LIBRARY_PATH\n')
+            else:
+                f.write('export LD_LIBRARY_PATH=$LD_LIBRARY_PATH\n')
             f.write('echo "Aslide environment variables have been set up."\n')
 
         os.chmod(setup_script_path, 0o755)  # Make it executable
@@ -120,14 +168,17 @@ class CustomInstall(install):
             f.write('    """\n')
             f.write('    current_path = os.path.dirname(os.path.abspath(__file__))\n')
             f.write('    lib_paths = [\n')
+            aslide_root = os.path.join(install_dir, 'Aslide')
             for path in lib_paths:
-                rel_path = os.path.relpath(path, os.path.join(install_dir, 'Aslide'))
+                rel_path = os.path.relpath(path, aslide_root)
                 f.write(f'        os.path.join(current_path, "{rel_path}"),\n')
             f.write('    ]\n\n')
             f.write('    # Add to LD_LIBRARY_PATH\n')
             f.write('    current_ld_path = os.environ.get("LD_LIBRARY_PATH", "")\n')
-            f.write('    new_ld_path = ":".join(lib_paths + [current_ld_path]) if current_ld_path else ":".join(lib_paths)\n')
-            f.write('    os.environ["LD_LIBRARY_PATH"] = new_ld_path\n\n')
+            f.write('    lib_entries = [path for path in lib_paths if path]\n')
+            f.write('    if current_ld_path:\n')
+            f.write('        lib_entries.append(current_ld_path)\n')
+            f.write('    os.environ["LD_LIBRARY_PATH"] = ":".join(lib_entries)\n\n')
             f.write('    # Directly load libraries using ctypes to ensure they are found\n')
             f.write('    try:\n')
             f.write('        # Try to preload critical libraries\n')
@@ -238,17 +289,18 @@ class CustomInstall(install):
 
 setup(
     name='Aslide',
-    version='1.4.1',
+    version='1.4.2',
     author='MrPeterJin',
     author_email='petergamsing@gmail.com',
     url='https://github.com/MrPeterJin/ASlide',
     description='A comprehensive package to read whole-slide image (WSI) files supporting Openslide, KFB, SDPC, TMAP, MDS, VSI, QPTiff, and TRON formats with full DeepZoom support.',
     packages=find_packages(),
+    include_package_data=True,
     package_data={
         'Aslide': ['*.py'],
         'Aslide.kfb': ['lib/*'],
         'Aslide.tmap': ['lib/*'],
-        'Aslide.sdpc': ['so/**/*'],
+        'Aslide.sdpc': ['lib/**/*', 'include/**/*', '*.py'],
         'Aslide.vsi': ['*.py', '**/*.py'],
         'Aslide.mds': ['lib/*'],
         'Aslide.qptiff': ['*.py'],
