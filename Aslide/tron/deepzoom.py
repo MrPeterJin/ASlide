@@ -1,302 +1,283 @@
-#!/usr/bin/env python3
-"""
-TRON DeepZoom Generator
+#
+# openslide-python - Python bindings for the OpenSlide library
+#
+# Copyright (c) 2010-2014 Carnegie Mellon University
+#
+# This library is free software; you can redistribute it and/or modify it
+# under the terms of version 2.1 of the GNU Lesser General Public License
+# as published by the Free Software Foundation.
+#
+# This library is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+# or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
+# License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with this library; if not, write to the Free Software Foundation,
+# Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
 
-TRON 格式天然支持 DeepZoom，因为它本身就是瓦片化存储的。
-这个模块提供了高效的 TRON DeepZoom 支持。
+"""Support for Deep Zoom images for TRON format.
+
+This module provides functionality for generating Deep Zoom images from
+TRON slide objects.
 """
 
+from __future__ import division
+from io import BytesIO
 import math
+import openslide
 from PIL import Image
-import io
+from Aslide.tron.slide import TronSlide
+from xml.etree.ElementTree import ElementTree, Element, SubElement
 
+class DeepZoomGenerator(object):
+    """Generates Deep Zoom tiles and metadata for TRON slides."""
 
-class TronDeepZoomGenerator:
-    """
-    TRON 格式的 DeepZoom 生成器
-    
-    TRON 格式本身就是瓦片化的，所以可以直接映射到 DeepZoom 结构
-    """
-    
-    def __init__(self, tron_slide, tile_size=254, overlap=1, limit_bounds=False):
-        """
-        初始化 TRON DeepZoom 生成器
-        
-        Args:
-            tron_slide: TronSlide 对象
-            tile_size: DeepZoom 瓦片大小 (默认 254)
-            overlap: 瓦片重叠像素数 (默认 1)
-            limit_bounds: 是否限制边界 (默认 False)
-        """
-        self._slide = tron_slide
-        self._tile_size = tile_size
-        self._overlap = overlap
+    BOUNDS_OFFSET_PROPS = (openslide.PROPERTY_NAME_BOUNDS_X,
+                openslide.PROPERTY_NAME_BOUNDS_Y)
+    BOUNDS_SIZE_PROPS = (openslide.PROPERTY_NAME_BOUNDS_WIDTH,
+                openslide.PROPERTY_NAME_BOUNDS_HEIGHT)
+
+    def __init__(self, osr, tile_size=254, overlap=1, limit_bounds=False):
+        """Create a DeepZoomGenerator wrapping a TRON slide object.
+
+        osr:          a TRON slide object.
+        tile_size:    the width and height of a single tile.  For best viewer
+                      performance, tile_size + 2 * overlap should be a power
+                      of two.
+        overlap:      the number of extra pixels to add to each interior edge
+                      of a tile.
+        limit_bounds: True to render only the non-empty slide region."""
+
+        # We have four coordinate planes:
+        # - Row and column of the tile within the Deep Zoom level (t_)
+        # - Pixel coordinates within the Deep Zoom level (z_)
+        # - Pixel coordinates within the slide level (l_)
+        # - Pixel coordinates within slide level 0 (l0_)
+
+        self._osr = osr
+        self._z_t_downsample = tile_size
+        self._z_overlap = overlap
         self._limit_bounds = limit_bounds
 
-        # TRON 原生瓦片大小是 1024x1024
-        self._native_tile_size = 1024
+        # Precompute dimensions
+        # Slide level and offset
+        if limit_bounds:
+            # Level 0 coordinate offset
+            self._l0_offset = tuple(int(osr.properties.get(prop, 0))
+                        for prop in self.BOUNDS_OFFSET_PROPS)
+            # Slide level dimensions scale factor in each axis
+            size_scale = tuple(int(osr.properties.get(prop, l0_lim)) / l0_lim
+                        for prop, l0_lim in zip(self.BOUNDS_SIZE_PROPS,
+                        osr.dimensions))
+            # Dimensions of active area
+            self._l_dimensions = tuple(tuple(int(math.ceil(l_lim * scale))
+                        for l_lim, scale in zip(l_size, size_scale))
+                        for l_size in osr.level_dimensions)
+        else:
+            self._l_dimensions = osr.level_dimensions
+            self._l0_offset = (0, 0)
+        self._l0_dimensions = self._l_dimensions[0]
+        # Deep Zoom level
+        z_size = self._l0_dimensions
+        z_dimensions = [z_size]
+        while z_size[0] > 1 or z_size[1] > 1:
+            z_size = tuple(max(1, int(math.ceil(z / 2))) for z in z_size)
+            z_dimensions.append(z_size)
+        self._z_dimensions = tuple(reversed(z_dimensions))
+        # Tile
+        tiles = lambda z_lim: int(math.ceil(z_lim / self._z_t_downsample))
+        self._t_dimensions = tuple((tiles(z_w), tiles(z_h))
+                    for z_w, z_h in self._z_dimensions)
 
-        # 不再使用内容区域偏移，直接基于 tile 存在性检查
+        # Deep Zoom level count
+        self._dz_levels = len(self._z_dimensions)
 
-        # 计算 DeepZoom 级别
-        self._calculate_levels()
-    
-    def _calculate_levels(self):
-        """计算 DeepZoom 级别信息"""
-        # 获取最大尺寸
-        max_dimension = max(self._slide.dimensions)
+        # Total downsamples for each Deep Zoom level
+        l0_z_downsamples = tuple(2 ** (self._dz_levels - dz_level - 1)
+                    for dz_level in range(self._dz_levels))
+
+        # Preferred slide levels for each Deep Zoom level
+        self._slide_from_dz_level = tuple(
+                    self._osr.get_best_level_for_downsample(d)
+                    for d in l0_z_downsamples)
+
+        # Piecewise downsamples
+        # TRON uses normal downsamples (1.0, 2.0, 4.0, etc.)
+        self._l0_l_downsamples = osr.level_downsamples
         
-        # 计算 DeepZoom 级别数
-        # DeepZoom 级别从最小的单瓦片开始，逐级增大
-        self._level_count = math.ceil(math.log2(max_dimension / self._tile_size)) + 1
-        
-        # 计算每个级别的尺寸和瓦片数
-        self._level_dimensions = []
-        self._level_tiles = []
-        
-        for level in range(self._level_count):
-            # DeepZoom 级别 0 是最小的，级别递增尺寸增大
-            # 计算该级别的缩放因子
-            scale = 2 ** level
-            
-            # 计算该级别的像素尺寸
-            width = math.ceil(self._slide.dimensions[0] / (2 ** (self._level_count - 1 - level)))
-            height = math.ceil(self._slide.dimensions[1] / (2 ** (self._level_count - 1 - level)))
-            
-            self._level_dimensions.append((width, height))
-            
-            # 计算该级别的瓦片数
-            tiles_x = math.ceil(width / self._tile_size)
-            tiles_y = math.ceil(height / self._tile_size)
-            self._level_tiles.append((tiles_x, tiles_y))
-    
-    @property
-    def tile_size(self):
-        """DeepZoom 瓦片大小"""
-        return self._tile_size
-    
+        self._l_z_downsamples = tuple(
+                    l0_z_downsamples[dz_level] /
+                    self._l0_l_downsamples[self._slide_from_dz_level[dz_level]]
+                    for dz_level in range(self._dz_levels))
+
+        # Slide background color
+        self._bg_color = '#' + self._osr.properties.get(
+                        openslide.PROPERTY_NAME_BACKGROUND_COLOR, 'ffffff')
+
+    def __repr__(self):
+        return '%s(%r, tile_size=%r, overlap=%r, limit_bounds=%r)' % (
+                self.__class__.__name__, self._osr, self._z_t_downsample,
+                self._z_overlap, self._limit_bounds)
+
     @property
     def level_count(self):
-        """DeepZoom 级别数"""
-        return self._level_count
-    
+        """The number of Deep Zoom levels in the image."""
+        return self._dz_levels
+
     @property
     def level_tiles(self):
-        """每个级别的瓦片数 (tiles_x, tiles_y) 列表"""
-        return self._level_tiles
-    
+        """A list of (tiles_x, tiles_y) tuples for each Deep Zoom level."""
+        return self._t_dimensions
+
     @property
     def level_dimensions(self):
-        """每个级别的像素尺寸 (width, height) 列表"""
-        return self._level_dimensions
-    
+        """A list of (pixels_x, pixels_y) tuples for each Deep Zoom level."""
+        return self._z_dimensions
+
     @property
     def tile_count(self):
-        """总瓦片数"""
-        return sum(tiles_x * tiles_y for tiles_x, tiles_y in self._level_tiles)
-    
-    def get_dzi(self, format='jpeg'):
-        """
-        生成 DZI XML 元数据
-        
-        Args:
-            format: 瓦片格式 ('jpeg' 或 'png')
-            
-        Returns:
-            DZI XML 字符串
-        """
-        width, height = self._slide.dimensions
-        
-        dzi_xml = f'''<?xml version="1.0" encoding="UTF-8"?>
-<Image xmlns="http://schemas.microsoft.com/deepzoom/2008"
-       Format="{format}"
-       Overlap="{self._overlap}"
-       TileSize="{self._tile_size}">
-    <Size Width="{width}" Height="{height}"/>
-</Image>'''
-        
-        return dzi_xml
-    
+        """The total number of Deep Zoom tiles in the image."""
+        return sum(t_cols * t_rows for t_cols, t_rows in self._t_dimensions)
+
     def get_tile(self, level, address):
-        """
-        获取指定级别和地址的瓦片
-        
-        Args:
-            level: DeepZoom 级别 (0 是最小级别)
-            address: 瓦片地址 (col, row) 元组
-            
-        Returns:
-            PIL.Image 瓦片图像
-        """
-        if level < 0 or level >= self._level_count:
-            raise ValueError(f"级别 {level} 超出范围 [0, {self._level_count-1}]")
-        
-        col, row = address
-        tiles_x, tiles_y = self._level_tiles[level]
-        
-        if col < 0 or col >= tiles_x or row < 0 or row >= tiles_y:
-            raise ValueError(f"地址 {address} 超出级别 {level} 的范围")
-        
-        # 计算对应的 TRON 级别
-        # DeepZoom 级别 0 对应最高的 TRON 级别
-        tron_level = self._map_deepzoom_to_tron_level(level)
-        
-        # 计算该级别的尺寸
-        level_width, level_height = self._level_dimensions[level]
-        
-        # 计算瓦片在该级别中的像素位置
-        tile_left = col * self._tile_size
-        tile_top = row * self._tile_size
-        
-        # 计算实际瓦片大小（边缘瓦片可能更小）
-        tile_width = min(self._tile_size, level_width - tile_left)
-        tile_height = min(self._tile_size, level_height - tile_top)
-        
-        # 如果有重叠，扩展读取区域
-        if self._overlap > 0:
-            # 扩展读取区域
-            read_left = max(0, tile_left - self._overlap)
-            read_top = max(0, tile_top - self._overlap)
-            read_right = min(level_width, tile_left + tile_width + self._overlap)
-            read_bottom = min(level_height, tile_top + tile_height + self._overlap)
-            
-            read_width = read_right - read_left
-            read_height = read_bottom - read_top
-        else:
-            read_left, read_top = tile_left, tile_top
-            read_width, read_height = tile_width, tile_height
-        
-        # 计算在原始图像中的缩放位置
-        scale_factor = 2 ** (self._level_count - 1 - level)
+        """Return an RGB PIL.Image for a tile.
 
-        original_left = int(read_left * scale_factor)
-        original_top = int(read_top * scale_factor)
-        original_width = int(read_width * scale_factor)
-        original_height = int(read_height * scale_factor)
+        level:     the Deep Zoom level.
+        address:   the address of the tile within the level as a (col, row)
+                   tuple."""
 
-        # TRON 格式特性：直接从 ZIP 结构检查 tile 是否存在
-        if hasattr(self._slide, '_zip_file') and self._slide._zip_file:
+        # Read tile
+        args, z_size = self._get_tile_info(level, address)
+        tile = self._osr.read_region(*args)
+        
+        # TRON read_region returns RGBA, use it directly
+        if tile.mode == 'RGB':
+            tile = tile.convert('RGBA')
+        
+        # Apply on solid background
+        bg = Image.new('RGB', tile.size, self._bg_color)
+        tile = Image.composite(tile, bg, tile)
+
+        # Scale to the correct size
+        if tile.size != z_size:
+            # Use LANCZOS for compatibility with newer Pillow versions
             try:
-                # 计算 TRON tile 坐标
-                tron_tile_size = 1024  # TRON 原生 tile 大小
-                tron_tile_col = original_left // tron_tile_size
-                tron_tile_row = original_top // tron_tile_size
+                # Try new Pillow API first
+                tile.thumbnail(z_size, Image.Resampling.LANCZOS)
+            except AttributeError:
+                # Fallback for older Pillow versions
+                tile.thumbnail(z_size, Image.LANCZOS)
 
-                # 构建 ZIP 内的瓦片路径 (使用 level 0，因为只有 level 0 有数据)
-                tile_path = f"0/1/{tron_tile_col}/{tron_tile_row}.jpg"
+        return tile
 
-                # 检查 ZIP 中是否存在这个瓦片
-                if tile_path not in self._slide._zip_file.namelist():
-                    return Image.new('RGB', (self._tile_size, self._tile_size), 'white')
+    def _get_tile_info(self, dz_level, t_location):
+        # Check parameters
+        if dz_level < 0 or dz_level >= self._dz_levels:
+            raise ValueError("Invalid level")
+        for t, t_lim in zip(t_location, self._t_dimensions[dz_level]):
+            if t < 0 or t >= t_lim:
+                raise ValueError("Invalid address")
 
-            except Exception as e:
-                # 如果检查失败，继续正常流程
-                print(f"DeepZoom: ZIP tile 存在性检查失败: {e}")
-                pass
+        # Get preferred slide level
+        slide_level = self._slide_from_dz_level[dz_level]
 
-        # 从 TRON 读取区域
-        try:
-            # 使用 TRON 的 read_region 方法
-            region = self._slide.read_region(
-                (original_left, original_top), 
-                tron_level, 
-                (original_width, original_height)
-            )
-            
-            # 如果读取的区域大小与目标不同，需要缩放
-            if region.size != (read_width, read_height):
-                region = region.resize((read_width, read_height), Image.LANCZOS)
-            
-            # 如果有重叠，裁剪到实际瓦片大小
-            if self._overlap > 0:
-                crop_left = tile_left - read_left
-                crop_top = tile_top - read_top
-                crop_right = crop_left + tile_width
-                crop_bottom = crop_top + tile_height
-                
-                region = region.crop((crop_left, crop_top, crop_right, crop_bottom))
-            
-            # 确保瓦片大小正确
-            if region.size != (tile_width, tile_height):
-                region = region.resize((tile_width, tile_height), Image.LANCZOS)
-            
-            # 检查是否为空白 tile（TRON 高倍率特性）
-            # 如果读取的区域是纯白色，说明这个位置没有实际的 tile 数据
-            pixels = list(region.getdata())
-            unique_colors = set(pixels)
+        # Calculate top/left and bottom/right overlap
+        z_overlap_tl = tuple(self._z_overlap * int(t != 0)
+                    for t in t_location)
+        z_overlap_br = tuple(self._z_overlap * int(t != t_lim - 1)
+                    for t, t_lim in
+                    zip(t_location, self.level_tiles[dz_level]))
 
-            # 如果是纯白色且在高级别，直接返回白色瓦片
-            if len(unique_colors) == 1 and unique_colors.pop() == (255, 255, 255) and level >= 6:
-                return Image.new('RGB', (self._tile_size, self._tile_size), 'white')
+        # Get final size of the tile
+        z_size = tuple(min(self._z_t_downsample,
+                    z_lim - self._z_t_downsample * t) + z_tl + z_br
+                    for t, z_lim, z_tl, z_br in
+                    zip(t_location, self._z_dimensions[dz_level],
+                    z_overlap_tl, z_overlap_br))
 
-            # 如果瓦片小于标准大小，用白色填充
-            if tile_width < self._tile_size or tile_height < self._tile_size:
-                padded = Image.new('RGB', (self._tile_size, self._tile_size), 'white')
-                padded.paste(region, (0, 0))
-                region = padded
+        # Obtain the region coordinates
+        z_location = [self._z_from_t(t) for t in t_location]
+        l_location = [self._l_from_z(dz_level, z - z_tl)
+                    for z, z_tl in zip(z_location, z_overlap_tl)]
 
-            return region
-            
-        except Exception as e:
-            # 如果读取失败，返回白色瓦片
-            print(f"警告: 读取瓦片 {level}:{address} 失败: {e}")
-            return Image.new('RGB', (self._tile_size, self._tile_size), 'white')
-    
-    def _map_deepzoom_to_tron_level(self, deepzoom_level):
-        """
-        将 DeepZoom 级别映射到 TRON 级别
+        # Round location down and size up, and add offset of active area
+        # TRON read_region expects level 0 coordinates (unlike KFB/SDPC)
+        # Convert from current level coordinates to level 0 coordinates
+        l0_location = tuple(int(math.floor(self._l0_from_l(slide_level, l) + l0_off))
+                    for l, l0_off in zip(l_location, self._l0_offset))
         
-        Args:
-            deepzoom_level: DeepZoom 级别 (0 是最小)
-            
-        Returns:
-            对应的 TRON 级别 (0 是最大)
-        """
-        # DeepZoom 级别 0 对应最小图像，应该使用最高的 TRON 级别
-        # DeepZoom 最高级别对应最大图像，应该使用 TRON 级别 0
-        
-        # 计算缩放因子
-        scale_factor = 2 ** (self._level_count - 1 - deepzoom_level)
-        
-        # 找到最接近的 TRON 级别
-        best_tron_level = 0
-        best_diff = float('inf')
-        
-        for tron_level in range(self._slide.level_count):
-            tron_downsample = self._slide.level_downsamples[tron_level]
-            diff = abs(tron_downsample - scale_factor)
-            
-            if diff < best_diff:
-                best_diff = diff
-                best_tron_level = tron_level
-        
-        return best_tron_level
-    
+        l_size = tuple(int(min(math.ceil(self._l_from_z(dz_level, dz)),
+                    l_lim - math.ceil(l)))
+                    for l, dz, l_lim in
+                    zip(l_location, z_size, self._l_dimensions[slide_level]))
+
+        # Return read_region() parameters plus tile size for final scaling
+        # TRON uses level 0 coordinates (standard OpenSlide behavior)
+        return ((l0_location, slide_level, l_size), z_size)
+
+    def _l0_from_l(self, slide_level, l):
+        return self._l0_l_downsamples[slide_level] * l
+
+    def _l_from_z(self, dz_level, z):
+        return self._l_z_downsamples[dz_level] * z
+
+    def _z_from_t(self, t):
+        return self._z_t_downsample * t
+
     def get_tile_coordinates(self, level, address):
-        """
-        获取瓦片在原始图像中的坐标
-        
-        Args:
-            level: DeepZoom 级别
-            address: 瓦片地址 (col, row)
-            
-        Returns:
-            (left, top, width, height) 在原始图像中的坐标
-        """
-        col, row = address
-        
-        # 计算缩放因子
-        scale_factor = 2 ** (self._level_count - 1 - level)
-        
-        # 计算瓦片位置
-        left = col * self._tile_size * scale_factor
-        top = row * self._tile_size * scale_factor
-        width = self._tile_size * scale_factor
-        height = self._tile_size * scale_factor
-        
-        # 确保不超出图像边界
-        max_width, max_height = self._slide.dimensions
-        width = min(width, max_width - left)
-        height = min(height, max_height - top)
-        
-        return (int(left), int(top), int(width), int(height))
+        """Return the read_region() arguments for the specified tile.
+
+        Most users should call get_tile() rather than calling
+        read_region() directly.
+
+        level:     the Deep Zoom level.
+        address:   the address of the tile within the level as a (col, row)
+                   tuple."""
+        return self._get_tile_info(level, address)[0]
+
+    def get_tile_dimensions(self, level, address):
+        """Return a (pixels_x, pixels_y) tuple for the specified tile.
+
+        level:     the Deep Zoom level.
+        address:   the address of the tile within the level as a (col, row)
+                   tuple."""
+        return self._get_tile_info(level, address)[1]
+
+    def get_dzi(self, format):
+        """Return a string containing the XML metadata for the .dzi file.
+
+        format:    the format of the individual tiles ('png' or 'jpeg')"""
+        image = Element('Image', TileSize=str(self._z_t_downsample),
+                        Overlap=str(self._z_overlap), Format=format,
+                        xmlns='http://schemas.microsoft.com/deepzoom/2008')
+        w, h = self._l0_dimensions
+        SubElement(image, 'Size', Width=str(w), Height=str(h))
+        tree = ElementTree(element=image)
+        buf = BytesIO()
+        tree.write(buf, encoding='UTF-8')
+        return buf.getvalue().decode('UTF-8')
+
+
+def main():
+    tron_file_path = "/path/to/test.tron"
+    slide = TronSlide(tron_file_path)
+
+    dzg = DeepZoomGenerator(slide)
+    print("level_count : ", dzg.level_count)
+    print("level_tiles : ", dzg.level_tiles)
+    print("level_dimensions : ", dzg.level_dimensions)
+    print("tile count : ", dzg.tile_count)
+    print("dzi : \n")
+    print(dzg.get_dzi('jpeg'))
+    tile = dzg.get_tile(13, (0,0))
+    import matplotlib.pyplot as plt
+    plt.imshow(tile)
+    plt.show()
+
+if __name__ == '__main__':
+    main()
+
+# Alias for compatibility with Aslide's unified DeepZoom interface
+TronDeepZoomGenerator = DeepZoomGenerator

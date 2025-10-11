@@ -70,7 +70,7 @@ You may check the detail installation path, for instance, if you use conda, it w
 Make sure the following files are in the folder:
 
 ```bash
-Aslide-path/sdpc/so
+Aslide-path/sdpc/lib
 Aslide-path/tmap/lib
 Aslide-path/kfb/lib
 ```
@@ -80,7 +80,7 @@ If not, you may need to re-install the package.
 Another possible reason is that the shared library path is not set correctly. To solve this, you need to open your the config file of your python environment (e.g. `~/.bashrc`), add the following lines to the environment variable:
 
 ```bash
-export LD_LIBRARY_PATH=Aslide-path/sdpc/so/:Aslide-path/sdpc/so/ffmpeg/:Aslide-path/kfb/lib/:Aslide-path/tmap/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=Aslide-path/sdpc/lib/:Aslide-path/kfb/lib/:Aslide-path/tmap/lib:$LD_LIBRARY_PATH
 ```
 
 Then, after sourcing the config file, and you are good to go:
@@ -101,7 +101,7 @@ source ~/.bashrc
 This package is based on the following projects and licensed under GPL 3.0 License:  
 
 [Openslide](https://github.com/openslide/openslide)  
-[sdpc-python](https://github.com/WonderLandxD/sdpc-for-python)  
+[opensdpc](https://github.com/WonderLandxD/opensdpc)  
 [tct](https://github.com/liyu10000/tct)  
 [WSI-SDK](https://github.com/yasohasakii/WSI-SDK)   
 [bioformats](https://github.com/ome/bioformats)   

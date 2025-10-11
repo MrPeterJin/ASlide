@@ -105,27 +105,36 @@ class SdpcSlide:
         return self._properties
 
     def get_best_level_for_downsample(self, downsample):
-        """Get the best level for a given downsample factor"""
-        # First try the SDK function
-        sdk_result = sdpc_sdk.sqrayslide_get_best_level_for_downsample(self.slide, downsample)
+        """Return best slide level for a given overall downsample.
 
-        # If SDK always returns 0, implement our own logic (OpenSlide's approach)
-        if sdk_result == 0 and downsample > 1.0:
-            # Find the level with downsample closest to but not exceeding the target
-            best_level = 0
-            best_diff = float('inf')
+        This mirrors OpenSlide's behavior:
+        - Prefer the smallest level whose downsample is >= target
+        - If none found, return the last (lowest-res) level
 
-            for level in range(self.level_count):
-                level_downsample = 1.0 / self.level_downsamples[level]  # Convert to actual downsample
-                if level_downsample <= downsample:
-                    diff = downsample - level_downsample
-                    if diff < best_diff:
-                        best_diff = diff
-                        best_level = level
+        Note: SDPC SDK's sqrayslide_get_best_level_for_downsample expects
+        inverse downsamples (0.5, 0.25, etc.) as input, not standard downsamples
+        (1.0, 2.0, 4.0, etc.). To maintain OpenSlide compatibility, we compute
+        the result ourselves instead of using the SDK method.
+        """
+        # Compute ourselves to maintain OpenSlide compatibility
+        downs = list(self.level_downsamples)
+        
+        # SDPC returns inverse downsamples (0.5, 0.25, etc.), convert to normal (1.0, 2.0, 4.0, etc.)
+        if downs and max(downs) <= 1.0:
+            downs = [1.0/d if d > 0 else float('inf') for d in downs]
+        
+        # Ensure downsamples are monotonically increasing
+        for i in range(1, len(downs)):
+            if downs[i] < downs[i-1]:
+                downs[i] = max(downs[i], downs[i-1])
 
-            return best_level
-
-        return sdk_result
+        # Find the best level: smallest level whose downsample >= target
+        for lvl, ds in enumerate(downs):
+            if ds >= downsample:
+                return lvl
+        
+        # If no level found, return the last (lowest-res) level
+        return self.level_count - 1
 
     def read_region(self, location, level, size):
         """

@@ -257,6 +257,31 @@ class TronSlide:
         """Get downsamples for all levels"""
         return self._level_downsamples.copy()
     
+    def get_best_level_for_downsample(self, downsample):
+        """Return best slide level for a given overall downsample.
+
+        This mirrors OpenSlide's behavior:
+        - Prefer the smallest level whose downsample is >= target
+        - If none found, return the last (lowest-res) level
+        """
+        # Get downsamples
+        downs = list(self.level_downsamples)
+        
+        # TRON uses normal downsamples (1.0, 2.0, 4.0, etc.), no conversion needed
+        
+        # Ensure downsamples are monotonically increasing
+        for i in range(1, len(downs)):
+            if downs[i] < downs[i-1]:
+                downs[i] = max(downs[i], downs[i-1])
+
+        # Find the best level: smallest level whose downsample >= target
+        for lvl, ds in enumerate(downs):
+            if ds >= downsample:
+                return lvl
+        
+        # If no level found, return the last (lowest-res) level
+        return self.level_count - 1
+    
     @property
     def properties(self) -> Dict[str, str]:
         """Get slide properties"""
