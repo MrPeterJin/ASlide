@@ -5,6 +5,7 @@ This is an integrated Pathology Image (a.k.a. Whole-slide image) reading library
 Current support format:
 
 - .bif
+- .isyntax
 - .ndpi
 - .mrxs
 - .qptiff
@@ -31,7 +32,7 @@ This package currently tested and worked on:
 
 ## Pre-requisite
 
-You should have [openslide-python](https://pypi.org/project/openslide-python/), [python-bioformats](https://pypi.org/project/bioformats/) and [qptifffile](https://pypi.org/project/qptifffile/) installed as a prerequisite package.
+You should have [openslide-python](https://pypi.org/project/openslide-python/), [python-bioformats](https://pypi.org/project/bioformats/), [qptifffile](https://pypi.org/project/qptifffile/), and [pyisyntax](https://pypi.org/project/pyisyntax/) installed as a prerequisite package.
 
 ## Installation
 
@@ -106,6 +107,6 @@ This package is based on the following projects and licensed under GPL 3.0 Licen
 [WSI-SDK](https://github.com/yasohasakii/WSI-SDK)   
 [bioformats](https://github.com/ome/bioformats)   
 [vsi2tif](https://github.com/andreped/vsi2tif)   
-
+[pyisyntax](https://github.com/anibali/pyisyntax)
 
 Many thanks to the authors of these projects.

@@ -63,6 +63,12 @@ try:
     from . import qptiff
 except ImportError:
     print("Warning: QPTiff module not available (qptifffile library required)")
+
+try:
+    from . import isyntax
+except ImportError:
+    print("Warning: iSyntax module not available (pyisyntax library required)")
+
 from . import aslide
 
 # Export the main Slide class for easy access

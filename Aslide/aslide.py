@@ -6,15 +6,9 @@ from Aslide.tmap.tmap_slide import TmapSlide
 from Aslide.sdpc.sdpc_slide import SdpcSlide
 from Aslide.vsi.vsi_slide import VsiSlide
 from Aslide.tron.slide import TronSlide
-try:
-    from Aslide.mds.mds_slide import MdsSlide
-except ImportError:
-    MdsSlide = None
-
-try:
-    from Aslide.qptiff.qptiff_slide import QptiffSlide
-except ImportError:
-    QptiffSlide = None
+from Aslide.mds.mds_slide import MdsSlide
+from Aslide.qptiff.qptiff_slide import QptiffSlide
+from Aslide.isyntax.isyntax_slide import IsyntaxSlide
 
 
 class Slide(object):
@@ -85,7 +79,15 @@ class Slide(object):
 			except:
 				pass
 
-		# 8. openslide (fallback for generic formats)
+		# 8. isyntax
+		if not read_success and self.format in ['.isyntax', '.ISYNTAX'] and IsyntaxSlide:
+			try:
+				self._osr = IsyntaxSlide(filepath)
+				read_success = True
+			except:
+				pass
+
+		# 9. openslide (fallback for generic formats)
 		if not read_success:
 			try:
 				self._osr = OpenSlide(filepath)

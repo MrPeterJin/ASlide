@@ -289,11 +289,11 @@ class CustomInstall(install):
 
 setup(
     name='Aslide',
-    version='1.4.2',
+    version='1.5.0',
     author='MrPeterJin',
     author_email='petergamsing@gmail.com',
     url='https://github.com/MrPeterJin/ASlide',
-    description='A comprehensive package to read whole-slide image (WSI) files supporting Openslide, KFB, SDPC, TMAP, MDS, VSI, QPTiff, and TRON formats with full DeepZoom support.',
+    description='A comprehensive package to read whole-slide image (WSI) files supporting Openslide, KFB, SDPC, TMAP, MDS, VSI, QPTiff, TRON, and iSyntax formats with full DeepZoom support.',
     packages=find_packages(),
     include_package_data=True,
     package_data={
@@ -305,6 +305,7 @@ setup(
         'Aslide.mds': ['lib/*'],
         'Aslide.qptiff': ['*.py'],
         'Aslide.tron': ['*.py', 'lib/*'],
+        'Aslide.isyntax': ['*.py'],
     },
     cmdclass={'install': CustomInstall},
     platforms='linux',
@@ -314,6 +315,7 @@ setup(
         'openslide-python',
         'qptifffile',  # For QPTiff format support
         'tifffile',    # For QPTiff format support
+        'pyisyntax',   # For iSyntax format support
     ],
     python_requires='>=3.7',
     classifiers=[

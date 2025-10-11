@@ -21,6 +21,9 @@ include Aslide/vsi/__init__.py
 # Include QPTiff files
 recursive-include Aslide/qptiff *.py
 
+# Include iSyntax files
+recursive-include Aslide/isyntax *.py
+
 # Include documentation
 include README.md
 include LICENSE

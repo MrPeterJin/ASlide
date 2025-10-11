@@ -19,6 +19,11 @@ try:
 except ImportError:
     TronDZG = None
 
+try:
+    from Aslide.isyntax.isyntax_deepzoom import IsyntaxDeepZoomGenerator as IsyntaxDZG
+except ImportError:
+    IsyntaxDZG = None
+
 
 class ADeepZoomGenerator(object):
     def __init__(self, osr, tile_size=254, overlap=1, limit_bounds=False, max_level_size=10000):
@@ -38,6 +43,9 @@ class ADeepZoomGenerator(object):
         elif osr.format in ['.tron', '.TRON'] and TronDZG:
             # TRON format uses specialized DeepZoom generator - native tile support
             self._dzg = TronDZG(osr, tile_size, overlap, limit_bounds)
+        elif osr.format in ['.isyntax', '.ISYNTAX'] and IsyntaxDZG:
+            # iSyntax format uses specialized DeepZoom generator
+            self._dzg = IsyntaxDZG(osr, tile_size, overlap, limit_bounds)
         else:
             self._dzg = OpenSlideDZG(osr, tile_size, overlap, limit_bounds)
 
