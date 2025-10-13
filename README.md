@@ -234,6 +234,7 @@ ASlide builds upon and integrates several excellent open-source projects:
 - [**Bio-Formats**](https://github.com/ome/bioformats) - Java library for reading life sciences image formats
 - [**vsi2tif**](https://github.com/andreped/vsi2tif) - VSI format conversion tools
 - [**pyisyntax**](https://github.com/anibali/pyisyntax) - Python library for reading Philips iSyntax images
+- [**olefile**](https://github.com/decalage2/olefile) - Python library for parsing OLE2 files
 
 Many thanks to the authors and contributors of these projects for their invaluable work.
 

@@ -85,12 +85,32 @@ class SdpcSlide:
 
     @property
     def level_downsamples(self):
-        """Get downsample factors for each level"""
+        """Get downsample factors for each level
+
+        Returns standard OpenSlide-compatible downsamples (1.0, 2.0, 4.0, ...)
+        SDPC SDK returns inverse downsamples (1.0, 0.5, 0.25, ...), so we convert them here.
+        """
         if self._level_downsamples is None:
             downsamples = []
             for level in range(self.level_count):
                 downsample = sdpc_sdk.sqrayslide_get_level_downsample(self.slide, level)
+
+                # SDPC SDK returns inverse downsamples (1.0, 0.5, 0.25, etc.)
+                # Convert to standard format (1.0, 2.0, 4.0, etc.) for OpenSlide compatibility
+                if downsample > 0 and downsample <= 1.0 and level > 0:
+                    # Inverse the value for levels > 0
+                    downsample = 1.0 / downsample
+                elif downsample <= 0:
+                    # Handle invalid values
+                    downsample = float('inf')
+
                 downsamples.append(downsample)
+
+            # Ensure downsamples are monotonically increasing
+            for i in range(1, len(downsamples)):
+                if downsamples[i] < downsamples[i-1]:
+                    downsamples[i] = max(downsamples[i], downsamples[i-1])
+
             self._level_downsamples = tuple(downsamples)
         return self._level_downsamples
 
@@ -110,29 +130,13 @@ class SdpcSlide:
         This mirrors OpenSlide's behavior:
         - Prefer the smallest level whose downsample is >= target
         - If none found, return the last (lowest-res) level
-
-        Note: SDPC SDK's sqrayslide_get_best_level_for_downsample expects
-        inverse downsamples (0.5, 0.25, etc.) as input, not standard downsamples
-        (1.0, 2.0, 4.0, etc.). To maintain OpenSlide compatibility, we compute
-        the result ourselves instead of using the SDK method.
         """
-        # Compute ourselves to maintain OpenSlide compatibility
-        downs = list(self.level_downsamples)
-        
-        # SDPC returns inverse downsamples (0.5, 0.25, etc.), convert to normal (1.0, 2.0, 4.0, etc.)
-        if downs and max(downs) <= 1.0:
-            downs = [1.0/d if d > 0 else float('inf') for d in downs]
-        
-        # Ensure downsamples are monotonically increasing
-        for i in range(1, len(downs)):
-            if downs[i] < downs[i-1]:
-                downs[i] = max(downs[i], downs[i-1])
-
-        # Find the best level: smallest level whose downsample >= target
-        for lvl, ds in enumerate(downs):
+        # level_downsamples property already returns standard format (1.0, 2.0, 4.0, ...)
+        # so we can use it directly
+        for lvl, ds in enumerate(self.level_downsamples):
             if ds >= downsample:
                 return lvl
-        
+
         # If no level found, return the last (lowest-res) level
         return self.level_count - 1
 
