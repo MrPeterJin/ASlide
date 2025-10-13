@@ -34,17 +34,6 @@ class CustomInstall(install):
             else:
                 print(f"Warning: Source file {src_file} not found. Skipping.")
 
-        # Handle MDS files
-        target_dir = os.path.join(self.install_lib, 'Aslide', 'mds', 'lib')
-        self.mkpath(target_dir)
-        mds_files = ['openMDS.so', 'libMDSParser.so']
-        for mds_file in mds_files:
-            src_file = os.path.join(os.path.dirname(__file__), 'Aslide', 'mds', 'lib', mds_file)
-            if os.path.exists(src_file):
-                self.copy_file(src_file, target_dir)
-            else:
-                print(f"Warning: Source file {src_file} not found. Skipping.")
-
         # Handle TRON files
         target_dir = os.path.join(self.install_lib, 'Aslide', 'tron', 'lib')
         self.mkpath(target_dir)
@@ -106,7 +95,6 @@ class CustomInstall(install):
             ('sdpc', 'lib'),
             ('kfb', 'lib'),
             ('tmap', 'lib'),
-            ('mds', 'lib'),
             ('tron', 'lib')
         ]
 
@@ -289,7 +277,7 @@ class CustomInstall(install):
 
 setup(
     name='Aslide',
-    version='1.5.0',
+    version='1.5.1',
     author='MrPeterJin',
     author_email='petergamsing@gmail.com',
     url='https://github.com/MrPeterJin/ASlide',
@@ -302,7 +290,7 @@ setup(
         'Aslide.tmap': ['lib/*'],
         'Aslide.sdpc': ['lib/**/*', 'include/**/*', '*.py'],
         'Aslide.vsi': ['*.py', '**/*.py'],
-        'Aslide.mds': ['lib/*'],
+        'Aslide.mds': ['*.py'],
         'Aslide.qptiff': ['*.py'],
         'Aslide.tron': ['*.py', 'lib/*'],
         'Aslide.isyntax': ['*.py'],
@@ -316,6 +304,7 @@ setup(
         'qptifffile',  # For QPTiff format support
         'tifffile',    # For QPTiff format support
         'pyisyntax',   # For iSyntax format support
+        'olefile',     # For MDS format support
     ],
     python_requires='>=3.10',
     classifiers=[

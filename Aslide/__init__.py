@@ -10,8 +10,8 @@ def setup_environment():
     lib_paths = [
         os.path.join(current_path, 'sdpc', 'lib'),
         os.path.join(current_path, 'kfb', 'lib'),
-        os.path.join(current_path, 'tmap', 'lib'),
-        os.path.join(current_path, 'mds', 'lib')
+        os.path.join(current_path, 'tmap', 'lib')
+        # MDS uses pure Python olefile, no native libraries needed
     ]
 
     # Include optional subdirectories if they exist

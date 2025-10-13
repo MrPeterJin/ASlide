@@ -5,6 +5,11 @@ from Aslide.tmap.tmap_deepzoom import DeepZoomGenerator as TmapDZG
 from Aslide.sdpc.sdpc_deepzoom import DeepZoomGenerator as SdpcDZG
 
 try:
+    from Aslide.mds.mds_deepzoom import DeepZoomGenerator as MdsDZG
+except ImportError:
+    MdsDZG = None
+
+try:
     from Aslide.vsi.vsi_deepzoom import VsiDeepZoomGenerator as VsiDZG
 except ImportError:
     VsiDZG = None
@@ -34,6 +39,9 @@ class ADeepZoomGenerator(object):
             self._dzg = SdpcDZG(osr, tile_size, overlap, limit_bounds)
         elif osr.format in ['.tmap', '.TMAP']:
             self._dzg = TmapDZG(osr, 256, overlap, limit_bounds)
+        elif osr.format in ['.mds', '.MDS', '.mdsx', '.MDSX'] and MdsDZG:
+            # MDS format uses specialized DeepZoom generator
+            self._dzg = MdsDZG(osr, tile_size, overlap, limit_bounds)
         elif osr.format in ['.vsi', '.VSI'] and VsiDZG:
             # VSI format uses specialized DeepZoom generator
             self._dzg = VsiDZG(osr, tile_size, overlap, limit_bounds)

@@ -1,51 +1,39 @@
 """
-MDS slide implementation using openMDS library
+MDS slide implementation using olefile to parse OLE2 structure
 """
 
 import os
 import sys
-import ctypes
-from ctypes import *
 from PIL import Image
-import numpy as np
 import xml.etree.ElementTree as ET
-from contextlib import redirect_stdout, redirect_stderr
-from io import StringIO
+from io import BytesIO
+from collections import defaultdict
 
-# Load the openMDS library
 try:
-    dirname = os.path.dirname(os.path.abspath(__file__))
-
-    # MUST preload libMDSParser.so first
-    mds_parser_path = os.path.join(dirname, 'lib', 'libMDSParser.so')
-    if os.path.exists(mds_parser_path):
-        # Force load with RTLD_GLOBAL to make symbols available
-        import ctypes
-        mds_parser_lib = ctypes.CDLL(mds_parser_path, mode=ctypes.RTLD_GLOBAL)
-    else:
-        raise ImportError("Cannot find libMDSParser.so")
-
-    lib_path = os.path.join(dirname, 'lib', 'openMDS.so')
-    _lib = cdll.LoadLibrary(lib_path)
-
-except Exception as e:
-    raise ImportError(f"Cannot load openMDS library: {e}")
+    import olefile
+except ImportError:
+    raise ImportError("olefile is required for MDS support. Install with: pip install olefile")
 
 class MdsSlide:
-    """MDS slide reader using openMDS library"""
+    """MDS slide reader using olefile to parse OLE2 structure"""
 
     def __init__(self, filename, silent=True):
         """Initialize MDS slide
 
         Args:
             filename: Path to MDS/MDSX file
-            silent: If True, suppress library debug output (default: True)
+            silent: If True, suppress debug output (default: True)
         """
         self.__filename = filename
         self._silent = silent
-        self.mds_handle = self._load_mds(filename)
 
-        # Get basic properties from XML and MDS file
+        # Open OLE file
+        self.ole = olefile.OleFileIO(filename)
+
+        # Parse structure
+        self._parse_structure()
+
+        # Get properties from XML
         self._get_properties()
 
     def __repr__(self):
@@ -57,30 +45,69 @@ class MdsSlide:
         ext = os.path.splitext(filename)[1].lower()
         return b"mds" if ext in ['.mds', '.mdsx'] else None
 
-    def _load_mds(self, filename):
-        """Load MDS file using openMDS API"""
-        # Check if file exists first to avoid crashes
-        if not os.path.exists(filename):
-            raise Exception(f"MDS file not found: {filename}")
+    def _parse_structure(self):
+        """Parse MDS OLE file structure"""
+        # Analyze levels and tiles
+        self._levels_data = defaultdict(list)
 
-        if isinstance(filename, str):
-            filename_bytes = filename.encode('utf-8')
-        else:
-            filename_bytes = filename
+        for stream in self.ole.listdir():
+            if len(stream) >= 3 and stream[0] == 'DSI0':
+                level_name = stream[1]
+                tile_name = stream[2]
+                self._levels_data[level_name].append(tile_name)
 
-        try:
-            if self._silent:
-                # Suppress library debug output
-                with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
-                    handle = _lib.openMDS_open(filename_bytes)
+        # Sort levels by scale (descending - highest resolution first)
+        self._level_names = sorted(self._levels_data.keys(),
+                                   key=lambda x: float(x),
+                                   reverse=True)
+
+        # Calculate tile grid for each level
+        self._level_grids = {}
+        for level_name in self._level_names:
+            tiles = self._levels_data[level_name]
+            rows = set()
+            cols = set()
+            for tile in tiles:
+                parts = tile.split('_')
+                if len(parts) == 2:
+                    try:
+                        row = int(parts[0])
+                        col = int(parts[1])
+                        rows.add(row)
+                        cols.add(col)
+                    except:
+                        pass
+
+            if rows and cols:
+                self._level_grids[level_name] = {
+                    'rows': max(rows) + 1,
+                    'cols': max(cols) + 1
+                }
+
+        # Determine tile size by reading first tile
+        if self._level_names:
+            first_level = self._level_names[0]
+            first_tile = self._levels_data[first_level][0]
+            tile_data = self._read_tile_data(first_level, first_tile)
+            if tile_data:
+                img = Image.open(BytesIO(tile_data))
+                self._tile_width, self._tile_height = img.size
             else:
-                handle = _lib.openMDS_open(filename_bytes)
+                # Default tile size
+                self._tile_width = 512
+                self._tile_height = 512
+        else:
+            self._tile_width = 512
+            self._tile_height = 512
 
-            if not handle:
-                raise Exception(f"Failed to load MDS file: {filename}")
-            return handle
-        except Exception as e:
-            raise Exception(f"Failed to load MDS file: {filename}, error: {e}")
+    def _read_tile_data(self, level_name, tile_name):
+        """Read raw tile data from OLE stream"""
+        try:
+            stream_path = ['DSI0', level_name, tile_name]
+            data = self.ole.openstream(stream_path).read()
+            return data
+        except:
+            return None
 
     def _parse_info_xml(self):
         """Parse info.xml file for slide properties"""
@@ -98,16 +125,17 @@ class MdsSlide:
 
                 properties = {}
                 for item in root.findall('item'):
-                    if 'rows' in item.attrib:
-                        properties['rows'] = int(item.attrib['rows'])
-                    elif 'cols' in item.attrib:
-                        properties['cols'] = int(item.attrib['cols'])
-                    elif 'objective' in item.attrib:
-                        properties['objective'] = float(item.attrib['objective'])
-                    elif 'create_time' in item.attrib:
-                        properties['create_time'] = item.attrib['create_time']
-                    elif 'scan_machine' in item.attrib:
-                        properties['scan_machine'] = item.attrib['scan_machine']
+                    for key, value in item.attrib.items():
+                        if key == 'rows':
+                            properties['rows'] = int(value)
+                        elif key == 'cols':
+                            properties['cols'] = int(value)
+                        elif key == 'objective':
+                            properties['objective'] = float(value)
+                        elif key == 'create_time':
+                            properties['create_time'] = value
+                        elif key == 'scan_machine':
+                            properties['scan_machine'] = value
 
                 return properties
             except Exception as e:
@@ -116,128 +144,57 @@ class MdsSlide:
         return {}
 
     def _get_properties(self):
-        """Get slide properties from XML and MDS file"""
+        """Get slide properties from XML"""
         # Parse XML properties
         xml_props = self._parse_info_xml()
 
-        # Try to get properties from MDS file
-        try:
-            # Try to get scale/mpp from MDS
-            scale = c_double()
-            if hasattr(mds_parser_lib, 'MDS_scale'):
-                result = mds_parser_lib.MDS_scale(self.mds_handle, byref(scale))
-                if result == 0 and scale.value > 0:
-                    self.sampling_rate = scale.value
-                else:
-                    # Calculate from objective if available
-                    objective = xml_props.get('objective', 40.0)
-                    # Typical conversion: 40x objective ≈ 0.25 μm/pixel
-                    self.sampling_rate = 10.0 / objective if objective > 0 else 0.25
-            else:
-                # Default calculation from objective
-                objective = xml_props.get('objective', 40.0)
-                self.sampling_rate = 10.0 / objective if objective > 0 else 0.25
-        except:
-            # Fallback to default
-            objective = xml_props.get('objective', 40.0)
-            self.sampling_rate = 10.0 / objective if objective > 0 else 0.25
+        # Calculate MPP from objective
+        objective = xml_props.get('objective', 40.0)
+        # Typical conversion: 40x objective ≈ 0.25 μm/pixel
+        self.sampling_rate = 10.0 / objective if objective > 0 else 0.25
 
         # Store XML properties
         self._xml_properties = xml_props
-        
-    def _get_mds_dimensions(self):
-        """Get dimensions from MDS file"""
-        try:
-            # Try to get tier count first
-            tier_count = 1
-            if hasattr(mds_parser_lib, 'MDS_tierCount'):
-                tier_count = mds_parser_lib.MDS_tierCount(self.mds_handle)
-                if tier_count <= 0:
-                    tier_count = 1
-
-            # Try to get layer count
-            layer_count = 1
-            if hasattr(mds_parser_lib, 'MDS_layerCount'):
-                layer_count = mds_parser_lib.MDS_layerCount(self.mds_handle)
-                if layer_count <= 0:
-                    layer_count = 1
-
-            # Try to get main image size
-            width = c_int()
-            height = c_int()
-
-            # First try MDS_size for overall dimensions
-            if hasattr(mds_parser_lib, 'MDS_size'):
-                result = mds_parser_lib.MDS_size(self.mds_handle, byref(width), byref(height))
-                if result == 0 and width.value > 0 and height.value > 0:
-                    return max(tier_count, layer_count), (width.value, height.value)
-
-            # Try layer-specific size
-            if hasattr(mds_parser_lib, 'MDS_layerSize'):
-                for layer in range(max(tier_count, layer_count)):
-                    result = mds_parser_lib.MDS_layerSize(self.mds_handle, layer, byref(width), byref(height))
-                    if result == 0 and width.value > 0 and height.value > 0:
-                        return max(tier_count, layer_count), (width.value, height.value)
-
-            # Fallback: estimate from XML properties and tile information
-            xml_props = getattr(self, '_xml_properties', {})
-            rows = xml_props.get('rows', 58)  # Default from example
-            cols = xml_props.get('cols', 26)  # Default from example
-
-            # Estimate tile size (common sizes are 256, 512, 1024)
-            tile_size = 512  # Default assumption
-            if hasattr(mds_parser_lib, 'MDS_tileSize'):
-                tile_width = c_int()
-                tile_height = c_int()
-                result = mds_parser_lib.MDS_tileSize(self.mds_handle, byref(tile_width), byref(tile_height))
-                if result == 0 and tile_width.value > 0:
-                    tile_size = tile_width.value
-
-            estimated_width = cols * tile_size
-            estimated_height = rows * tile_size
-
-            return max(tier_count, layer_count), (estimated_width, estimated_height)
-
-        except Exception as e:
-            print(f"Warning: Could not get MDS dimensions: {e}")
-            # Final fallback
-            return 1, (15360, 29696)  # 26*512 x 58*512 based on XML
 
     @property
     def level_count(self):
         """Get number of levels"""
-        if not hasattr(self, '_level_count'):
-            self._level_count, _ = self._get_mds_dimensions()
-        return self._level_count
+        return len(self._level_names)
 
     @property
     def dimensions(self):
         """Return the dimensions of the highest resolution level (level 0)."""
         if not hasattr(self, '_dimensions'):
-            _, self._dimensions = self._get_mds_dimensions()
+            # Level 0 is the highest resolution (scale = 1.0)
+            level_name = self._level_names[0]
+            grid = self._level_grids.get(level_name, {'rows': 1, 'cols': 1})
+            width = grid['cols'] * self._tile_width
+            height = grid['rows'] * self._tile_height
+            self._dimensions = (width, height)
         return self._dimensions
 
     @property
     def level_dimensions(self):
         """Get dimensions for all levels"""
         if not hasattr(self, '_level_dimensions'):
-            base_width, base_height = self.dimensions
             self._level_dimensions = []
-
-            for level in range(self.level_count):
-                # Each level is typically downsampled by factor of 2
-                downsample = 2 ** level
-                level_width = max(1, base_width // downsample)
-                level_height = max(1, base_height // downsample)
-                self._level_dimensions.append((level_width, level_height))
-
+            for level_name in self._level_names:
+                grid = self._level_grids.get(level_name, {'rows': 1, 'cols': 1})
+                width = grid['cols'] * self._tile_width
+                height = grid['rows'] * self._tile_height
+                self._level_dimensions.append((width, height))
         return self._level_dimensions
 
     @property
     def level_downsamples(self):
         """Get downsample factors for all levels"""
         if not hasattr(self, '_level_downsamples'):
-            self._level_downsamples = tuple(2.0 ** level for level in range(self.level_count))
+            # Calculate downsamples based on level scales
+            base_scale = float(self._level_names[0])  # Should be 1.0
+            self._level_downsamples = tuple(
+                base_scale / float(level_name)
+                for level_name in self._level_names
+            )
         return self._level_downsamples
 
     @property
@@ -262,24 +219,26 @@ class MdsSlide:
 
     @property
     def associated_images(self):
-        """Get associated images"""
+        """Get associated images from external files"""
         images = {}
 
-        # Try to get label image
-        try:
-            if hasattr(_lib, 'openMDS_label'):
-                # This would need proper implementation
-                pass
-        except:
-            pass
+        base_dir = os.path.dirname(self.__filename)
 
-        # Try to get macro image
-        try:
-            if hasattr(_lib, 'openMDS_macro'):
-                # This would need proper implementation
+        # Try to load label.jpg
+        label_path = os.path.join(base_dir, 'label.jpg')
+        if os.path.exists(label_path):
+            try:
+                images['label'] = Image.open(label_path)
+            except:
                 pass
-        except:
-            pass
+
+        # Try to load macro.jpg
+        macro_path = os.path.join(base_dir, 'macro.jpg')
+        if os.path.exists(macro_path):
+            try:
+                images['macro'] = Image.open(macro_path)
+            except:
+                pass
 
         return images
 
@@ -332,46 +291,86 @@ class MdsSlide:
             return Image.new('RGB', size, (200, 200, 200))
 
     def read_region(self, location, level, size):
-        """Read a region from the slide"""
+        """Read a region from the slide
+
+        Args:
+            location: (x, y) tuple of top-left corner in level 0 coordinates
+            level: pyramid level
+            size: (width, height) of region to read
+
+        Returns:
+            PIL Image
+        """
         x, y = location
         width, height = size
 
-        try:
-            # Try to use MDS tile reading functions
-            if hasattr(mds_parser_lib, 'MDS_tileImage'):
-                # This would need proper implementation with tile coordinates
-                # For now, return a placeholder
-                pass
+        # Get level info
+        if level >= len(self._level_names):
+            raise ValueError(f"Invalid level: {level}")
 
-            # Try openMDS_getData if available
-            if hasattr(_lib, 'openMDS_getData'):
-                # This would need proper implementation
-                pass
+        level_name = self._level_names[level]
+        downsample = self.level_downsamples[level]
 
-        except Exception as e:
-            print(f"Warning: Could not read region from MDS: {e}")
+        # Convert level 0 coordinates to current level coordinates
+        level_x = int(x / downsample)
+        level_y = int(y / downsample)
 
-        # Fallback: return a gray image with some pattern
-        img_array = np.full((height, width, 3), 128, dtype=np.uint8)
+        # Calculate which tiles we need
+        start_tile_col = level_x // self._tile_width
+        start_tile_row = level_y // self._tile_height
+        end_tile_col = (level_x + width - 1) // self._tile_width
+        end_tile_row = (level_y + height - 1) // self._tile_height
 
-        # Add a simple pattern to distinguish different regions
-        pattern_x = (x // 100) % 2
-        pattern_y = (y // 100) % 2
-        if (pattern_x + pattern_y) % 2:
-            img_array[:, :, 0] = 150  # Slightly reddish
-        else:
-            img_array[:, :, 2] = 150  # Slightly bluish
+        # Create output image
+        result = Image.new('RGB', (width, height), (240, 240, 240))
 
-        return Image.fromarray(img_array)
+        # Read and composite tiles
+        for tile_row in range(start_tile_row, end_tile_row + 1):
+            for tile_col in range(start_tile_col, end_tile_col + 1):
+                tile_name = f"{tile_row:04d}_{tile_col:04d}"
+
+                # Check if tile exists
+                if tile_name not in self._levels_data[level_name]:
+                    continue
+
+                # Read tile
+                tile_data = self._read_tile_data(level_name, tile_name)
+                if not tile_data:
+                    continue
+
+                try:
+                    tile_img = Image.open(BytesIO(tile_data))
+
+                    # Calculate paste position
+                    tile_x = tile_col * self._tile_width - level_x
+                    tile_y = tile_row * self._tile_height - level_y
+
+                    # Crop tile if needed
+                    crop_left = max(0, -tile_x)
+                    crop_top = max(0, -tile_y)
+                    crop_right = min(tile_img.width, width - tile_x)
+                    crop_bottom = min(tile_img.height, height - tile_y)
+
+                    if crop_right > crop_left and crop_bottom > crop_top:
+                        cropped = tile_img.crop((crop_left, crop_top, crop_right, crop_bottom))
+                        paste_x = max(0, tile_x)
+                        paste_y = max(0, tile_y)
+                        result.paste(cropped, (paste_x, paste_y))
+                except Exception as e:
+                    if not self._silent:
+                        print(f"Warning: Failed to read tile {tile_name}: {e}")
+                    continue
+
+        return result
 
     def close(self):
         """Close the slide"""
-        if hasattr(self, 'mds_handle') and self.mds_handle:
+        if hasattr(self, 'ole') and self.ole:
             try:
-                _lib.openMDS_close(self.mds_handle)
+                self.ole.close()
             except:
                 pass
-            self.mds_handle = None
+            self.ole = None
 
     def __del__(self):
         """Destructor"""

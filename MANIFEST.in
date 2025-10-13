@@ -8,7 +8,6 @@ recursive-include Aslide/tmap *.h
 recursive-include Aslide/sdpc/lib *
 recursive-include Aslide/sdpc/include *
 recursive-include Aslide/sdpc *.py
-recursive-include Aslide/mds/lib *.so
 recursive-include Aslide/tron/lib *.so
 recursive-include Aslide/tron *.h
 
@@ -17,6 +16,9 @@ recursive-include Aslide/vsi *.py
 include Aslide/vsi/vsi_slide.py
 include Aslide/vsi/bioformats_vsi_slide.py
 include Aslide/vsi/__init__.py
+
+# Include MDS files
+recursive-include Aslide/mds *.py
 
 # Include QPTiff files
 recursive-include Aslide/qptiff *.py
