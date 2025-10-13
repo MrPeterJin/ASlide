@@ -1,5 +1,6 @@
 """
-MDS slide implementation using olefile to parse OLE2 structure
+MDS slide implementation
+Supports both OLE2 format (.mds) and BKIO format (.mdsx)
 """
 
 import os
@@ -14,14 +15,63 @@ try:
 except ImportError:
     raise ImportError("olefile is required for MDS support. Install with: pip install olefile")
 
+
+def detect_mds_format(filename):
+    """
+    Detect MDS file format (OLE2 or BKIO)
+
+    Returns:
+        'ole2' for OLE2 format (.mds files)
+        'bkio' for BKIO format (.mdsx files)
+        None if not a valid MDS file
+    """
+    try:
+        with open(filename, 'rb') as f:
+            magic = f.read(4)
+            if magic == b'BKIO':
+                return 'bkio'
+            elif magic == b'\xd0\xcf\x11\xe0':  # OLE2 magic
+                return 'ole2'
+    except:
+        pass
+    return None
+
+
 class MdsSlide:
-    """MDS slide reader using olefile to parse OLE2 structure"""
+    """
+    MDS slide reader - automatically detects and handles both formats:
+    - OLE2 format (.mds): uses olefile
+    - BKIO format (.mdsx): uses custom parser
+    """
+
+    def __new__(cls, filename, silent=True):
+        """Factory method to create appropriate slide reader"""
+        format_type = detect_mds_format(filename)
+
+        if format_type == 'ole2':
+            return MdsSlideOLE2(filename, silent)
+        elif format_type == 'bkio':
+            # Import here to avoid circular dependency
+            from .mdsx_slide import MdsxSlide
+            return MdsxSlide(filename, silent)
+        else:
+            raise ValueError(f"Unsupported MDS format: {filename}")
+
+    @classmethod
+    def detect_format(cls, filename):
+        """Detect if file is MDS/MDSX format"""
+        ext = os.path.splitext(filename)[1].lower()
+        return b"mds" if ext in ['.mds', '.mdsx'] else None
+
+
+class MdsSlideOLE2:
+    """MDS slide reader for OLE2 format using olefile"""
 
     def __init__(self, filename, silent=True):
         """Initialize MDS slide
 
         Args:
-            filename: Path to MDS/MDSX file
+            filename: Path to MDS file
             silent: If True, suppress debug output (default: True)
         """
         self.__filename = filename
@@ -38,12 +88,6 @@ class MdsSlide:
 
     def __repr__(self):
         return '%s(%r)' % (self.__class__.__name__, self.__filename)
-
-    @classmethod
-    def detect_format(cls, filename):
-        """Detect if file is MDS/MDSX format"""
-        ext = os.path.splitext(filename)[1].lower()
-        return b"mds" if ext in ['.mds', '.mdsx'] else None
 
     def _parse_structure(self):
         """Parse MDS OLE file structure"""

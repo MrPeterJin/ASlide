@@ -36,7 +36,7 @@ ASlide supports the following whole-slide image formats:
 | KFB | `.kfb` | KFBio | Native SDK |
 | SDPC | `.sdpc` | SQRAY | Native SDK |
 | TMAP | `.TMAP` | 3DHISTECH | Native SDK |
-| MDS | `.mds` | Motic | Native SDK |
+| MDS | `.mds`, `.mdsx` | Motic | Native SDK |
 | QPTiff | `.qptiff` | Akoya | qptifffile |
 | TRON | `.tron` | InteMedic | Native SDK |
 | iSyntax | `.isyntax` | Philips | pyisyntax |
