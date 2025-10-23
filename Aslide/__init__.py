@@ -43,15 +43,26 @@ def setup_environment():
                 'libopencv_imgproc.so.3.4',
                 'libopencv_imgcodecs.so.3.4',
             ]
+            opencv_loaded = []
             for lib_name in opencv_libs_order:
                 lib_file = os.path.join(opencv_lib_path, lib_name)
                 if os.path.exists(lib_file):
                     try:
                         ctypes.CDLL(lib_file, mode=ctypes.RTLD_GLOBAL)
+                        opencv_loaded.append(lib_name)
                     except Exception as e:
-                        # If loading fails, it might be due to conda conflicts
-                        # Try to continue anyway as the system might have compatible versions
-                        pass
+                        # Print warning but don't fail - some environments may have system OpenCV
+                        import warnings
+                        warnings.warn(f"Failed to load bundled {lib_name}: {e}")
+
+            # Verify at least core libraries loaded
+            if len(opencv_loaded) < 3:
+                import warnings
+                warnings.warn(
+                    f"Only {len(opencv_loaded)}/3 core OpenCV libraries loaded. "
+                    f"This may cause issues with KFB/TMAP/SDPC formats. "
+                    f"Loaded: {opencv_loaded}"
+                )
 
         # Try to preload other critical libraries
         for lib_path in lib_paths:
