@@ -46,6 +46,7 @@ def setup_environment():
                 'libjbig.so.0',
                 'liblzma.so.5',
                 'libzstd.so.1',
+                'libdeflate.so.0',
                 # TIFF (depends on compression libs)
                 'libtiff.so.5',
                 # OpenEXR libraries (for TMAP)
