@@ -32,12 +32,40 @@ def setup_environment():
 
     # Directly load libraries using ctypes to ensure they are found
     try:
-        # Preload OpenCV libraries first in the correct order
-        # Only load essential libraries to avoid conflicts with conda/system libraries
+        # Preload dependencies and OpenCV libraries in the correct order
         opencv_lib_path = os.path.join(current_path, 'opencv', 'lib')
         if os.path.exists(opencv_lib_path):
-            # Only load core libraries that are actually needed
-            # Skip highgui and other GUI-related libraries that may conflict with conda
+            # First, load all dependencies (image format libs, OpenEXR, compression libs)
+            # These must be loaded before OpenCV imgcodecs and TMAP
+            dependency_libs = [
+                # Image format libraries (for OpenCV imgcodecs)
+                'libjpeg.so.8',
+                'libpng16.so.16',
+                'libwebp.so.7',
+                # Compression libraries (for libtiff)
+                'libjbig.so.0',
+                'liblzma.so.5',
+                'libzstd.so.1',
+                # TIFF (depends on compression libs)
+                'libtiff.so.5',
+                # OpenEXR libraries (for TMAP)
+                'libHalf-2_5.so.25',
+                'libIex-2_5.so.25',
+                'libIlmThread-2_5.so.25',
+                'libIlmImf-2_5.so.25',
+            ]
+
+            for lib_name in dependency_libs:
+                lib_file = os.path.join(opencv_lib_path, lib_name)
+                if os.path.exists(lib_file):
+                    try:
+                        ctypes.CDLL(lib_file, mode=ctypes.RTLD_GLOBAL)
+                    except Exception:
+                        # Silently ignore - may already be loaded from system
+                        pass
+
+            # Now load OpenCV libraries in order
+            # Only load essential libraries to avoid conflicts with conda/system libraries
             opencv_libs_order = [
                 'libopencv_core.so.3.4',
                 'libopencv_imgproc.so.3.4',
