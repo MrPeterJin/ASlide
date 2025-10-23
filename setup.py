@@ -19,6 +19,7 @@ class CustomInstall(install):
             self.mkpath(target_dir)
             for lib_file in os.listdir(opencv_lib_dir):
                 # Copy all .so files (OpenCV + dependencies like libjpeg, libpng, etc.)
+                # RPATH is already set in source files and will be preserved during copy
                 if '.so' in lib_file:
                     src_file = os.path.join(opencv_lib_dir, lib_file)
                     self.copy_file(src_file, target_dir)

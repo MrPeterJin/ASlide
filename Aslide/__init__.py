@@ -50,6 +50,7 @@ def setup_environment():
                 # TIFF (depends on compression libs)
                 'libtiff.so.5',
                 # OpenEXR libraries (for TMAP)
+                'libImath-2_5.so.25',
                 'libHalf-2_5.so.25',
                 'libIex-2_5.so.25',
                 'libIlmThread-2_5.so.25',
