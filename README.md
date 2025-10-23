@@ -206,6 +206,7 @@ sudo python setup.py install
 
 The package has been tested on:
 
+- Red Hat 9.6 with Python 3.10
 - Ubuntu 24.04 LTS with Python 3.10
 - Ubuntu 22.04 LTS with Python 3.11
 - Ubuntu 22.04 LTS with Python 3.10

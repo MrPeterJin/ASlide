@@ -163,17 +163,25 @@ class SdpcSlide:
         if width <= 0 or height <= 0:
             raise ValueError(f"Invalid size: {size}")
 
+        # Convert level-0 coordinates to level-specific coordinates
+        # SDPC SDK expects coordinates in the current level's coordinate system,
+        # not level 0 coordinates (similar to KFB format, different from OpenSlide)
+        downsample = self.level_downsamples[level]
+        level_x = int(startX / downsample)
+        level_y = int(startY / downsample)
+
         # Allocate buffer for BGRA data
         buffer_size = width * height * 4  # 4 bytes per pixel (BGRA)
         bgra_buffer = (c_ubyte * buffer_size)()
 
-        # Read region as BGRA
+        # Read region as BGRA using level-specific coordinates
         success = sdpc_sdk.sqrayslide_read_region_bgra(
-            self.slide, bgra_buffer, startX, startY, width, height, level
+            self.slide, bgra_buffer, level_x, level_y, width, height, level
         )
 
         if not success:
-            raise RuntimeError(f"Failed to read region at ({startX}, {startY}) with size ({width}, {height}) at level {level}")
+            raise RuntimeError(f"Failed to read region at level-0 coords ({startX}, {startY}) "
+                             f"-> level-{level} coords ({level_x}, {level_y}) with size ({width}, {height})")
 
         # Convert BGRA buffer to numpy array
         bgra_array = np.frombuffer(bgra_buffer, dtype=np.uint8)

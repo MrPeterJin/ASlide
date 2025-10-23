@@ -50,34 +50,59 @@ class KfbSlide(AbstractSlide):
         return kfb_lowlevel.kfbslide_get_best_level_for_downsample(self._osr, downsample)
 
     def read_fixed_region(self, location, level, size):
+        """
+        Read a fixed region from the slide (tile-based reading)
 
+        Args:
+            location: (x, y) tuple of the top-left corner in level 0 coordinates
+            level: pyramid level to read from
+            size: (width, height) tuple of the region size (not used in this method)
+
+        Returns:
+            PIL Image object
+        """
         x = int(location[0])
         y = int(location[1])
         img_index = kfbRef.img_count
         kfbRef.img_count += 1
         print("img_index : ", img_index, "Level : ", level, "Location : ", x, y)
-        
+
         # Convert level-0 coordinates to level-specific coordinates
+        # KFB SDK expects coordinates in the current level's coordinate system,
+        # not level 0 coordinates (similar to SDPC format, different from OpenSlide)
         downsample = self.level_downsamples[level]
         level_x = int(x / downsample)
         level_y = int(y / downsample)
-        
+
         return kfb_lowlevel.kfbslide_read_region(self._osr, level, level_x, level_y)
 
     def read_region(self, location, level, size):
+        """
+        Read a region from the slide
+
+        Args:
+            location: (x, y) tuple of the top-left corner in level 0 coordinates
+            level: pyramid level to read from
+            size: (width, height) tuple of the region size
+
+        Returns:
+            PIL Image object
+        """
         x = int(location[0])
         y = int(location[1])
         width = int(size[0])
         height = int(size[1])
         img_index = kfbRef.img_count
         kfbRef.img_count += 1
-        
+
         # Convert level-0 coordinates to level-specific coordinates
+        # KFB SDK expects coordinates in the current level's coordinate system,
+        # not level 0 coordinates (similar to SDPC format, different from OpenSlide)
         downsample = self.level_downsamples[level]
         level_x = int(x / downsample)
         level_y = int(y / downsample)
-        
-        # Now pass the level-specific coordinates to the underlying function
+
+        # Pass the level-specific coordinates to the underlying function
         return kfb_lowlevel.kfbslide_read_roi_region(self._osr, level, level_x, level_y, width, height)
 
     def get_thumbnail(self, size):
