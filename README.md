@@ -49,6 +49,8 @@ ASlide supports the following whole-slide image formats:
 - **Python**: 3.10 or higher
 - **System Libraries**: OpenSlide library (for OpenSlide-based formats)
 
+**Note**: OpenCV 3.4.2 libraries are now bundled with ASlide, so you don't need to install OpenCV separately!
+
 ### Install from Source
 
 ```bash
@@ -62,6 +64,7 @@ python setup.py install
 
 The installation script will automatically:
 - Install required Python packages (numpy, Pillow, openslide-python, qptifffile, tifffile, pyisyntax)
+- Bundle OpenCV 3.4.2 shared libraries
 - Copy vendor-specific shared libraries to the appropriate locations
 - Set up environment variables for library paths
 - Create helper scripts for environment configuration
@@ -227,6 +230,7 @@ This project is licensed under the **GPL 3.0 License** - see the [LICENSE](LICEN
 
 ASlide builds upon and integrates several excellent open-source projects:
 
+- [**opencv**](https://github.com/opencv/opencv) - A computer vision library used for image processing
 - [**OpenSlide**](https://github.com/openslide/openslide) - A C library for reading whole-slide images
 - [**opensdpc**](https://github.com/WonderLandxD/opensdpc) - SDPC format support
 - [**tct**](https://github.com/liyu10000/tct) - TCT slide processing utilities

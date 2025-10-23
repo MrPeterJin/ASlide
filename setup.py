@@ -12,6 +12,18 @@ from pathlib import Path
 class CustomInstall(install):
     def run(self):
         install.run(self)
+        # Handle OpenCV files
+        opencv_lib_dir = os.path.join(os.path.dirname(__file__), 'Aslide', 'opencv', 'lib')
+        if os.path.exists(opencv_lib_dir):
+            target_dir = os.path.join(self.install_lib, 'Aslide', 'opencv', 'lib')
+            self.mkpath(target_dir)
+            for opencv_file in os.listdir(opencv_lib_dir):
+                if opencv_file.startswith('libopencv') and '.so' in opencv_file:
+                    src_file = os.path.join(opencv_lib_dir, opencv_file)
+                    self.copy_file(src_file, target_dir)
+        else:
+            print(f"Warning: OpenCV library directory {opencv_lib_dir} not found. Skipping.")
+
         # Handle KFB files
         kfb_so_files = ['libcurl.so', 'libImageOperationLib.so', 'libjpeg.so.9', 'libkfbslide.so']
         target_dir = os.path.join(self.install_lib, 'Aslide', 'kfb', 'lib')
@@ -92,6 +104,7 @@ class CustomInstall(install):
     def _collect_library_paths(self, install_dir):
         """Collect all directories that contain shared libraries for runtime loading."""
         vendors = [
+            ('opencv', 'lib'),
             ('sdpc', 'lib'),
             ('kfb', 'lib'),
             ('tmap', 'lib'),
@@ -286,6 +299,7 @@ setup(
     include_package_data=True,
     package_data={
         'Aslide': ['*.py'],
+        'Aslide.opencv': ['lib/*'],
         'Aslide.kfb': ['lib/*'],
         'Aslide.tmap': ['lib/*'],
         'Aslide.sdpc': ['lib/**/*', 'include/**/*', '*.py'],
@@ -300,6 +314,7 @@ setup(
     install_requires=[
         'numpy',
         'Pillow',
+        'openslide-bin',
         'openslide-python',
         'qptifffile',  # For QPTiff format support
         'tifffile',    # For QPTiff format support

@@ -1,6 +1,10 @@
 # Include all Python files
 recursive-include Aslide *.py
 
+# Include OpenCV library files
+recursive-include Aslide/opencv/lib *.so
+recursive-include Aslide/opencv/lib *.so.*
+
 # Include library files
 recursive-include Aslide/kfb/lib *.so
 recursive-include Aslide/tmap/lib *.so

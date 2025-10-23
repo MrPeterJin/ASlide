@@ -8,6 +8,7 @@ def setup_environment():
     """Set up environment variables for Aslide."""
     current_path = os.path.dirname(os.path.abspath(__file__))
     lib_paths = [
+        os.path.join(current_path, 'opencv', 'lib'),  # OpenCV must be loaded first
         os.path.join(current_path, 'sdpc', 'lib'),
         os.path.join(current_path, 'kfb', 'lib'),
         os.path.join(current_path, 'tmap', 'lib')
@@ -31,9 +32,30 @@ def setup_environment():
 
     # Directly load libraries using ctypes to ensure they are found
     try:
-        # Try to preload critical libraries
+        # Preload OpenCV libraries first in the correct order
+        # Only load essential libraries to avoid conflicts with conda/system libraries
+        opencv_lib_path = os.path.join(current_path, 'opencv', 'lib')
+        if os.path.exists(opencv_lib_path):
+            # Only load core libraries that are actually needed
+            # Skip highgui and other GUI-related libraries that may conflict with conda
+            opencv_libs_order = [
+                'libopencv_core.so.3.4',
+                'libopencv_imgproc.so.3.4',
+                'libopencv_imgcodecs.so.3.4',
+            ]
+            for lib_name in opencv_libs_order:
+                lib_file = os.path.join(opencv_lib_path, lib_name)
+                if os.path.exists(lib_file):
+                    try:
+                        ctypes.CDLL(lib_file, mode=ctypes.RTLD_GLOBAL)
+                    except Exception as e:
+                        # If loading fails, it might be due to conda conflicts
+                        # Try to continue anyway as the system might have compatible versions
+                        pass
+
+        # Try to preload other critical libraries
         for lib_path in lib_paths:
-            if os.path.exists(lib_path):
+            if os.path.exists(lib_path) and 'opencv' not in lib_path:
                 for lib_file in os.listdir(lib_path):
                     if lib_file.endswith(".so"):
                         try:
