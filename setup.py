@@ -12,14 +12,15 @@ from pathlib import Path
 class CustomInstall(install):
     def run(self):
         install.run(self)
-        # Handle OpenCV files
+        # Handle OpenCV and dependency files
         opencv_lib_dir = os.path.join(os.path.dirname(__file__), 'Aslide', 'opencv', 'lib')
         if os.path.exists(opencv_lib_dir):
             target_dir = os.path.join(self.install_lib, 'Aslide', 'opencv', 'lib')
             self.mkpath(target_dir)
-            for opencv_file in os.listdir(opencv_lib_dir):
-                if opencv_file.startswith('libopencv') and '.so' in opencv_file:
-                    src_file = os.path.join(opencv_lib_dir, opencv_file)
+            for lib_file in os.listdir(opencv_lib_dir):
+                # Copy all .so files (OpenCV + dependencies like libjpeg, libpng, etc.)
+                if '.so' in lib_file:
+                    src_file = os.path.join(opencv_lib_dir, lib_file)
                     self.copy_file(src_file, target_dir)
         else:
             print(f"Warning: OpenCV library directory {opencv_lib_dir} not found. Skipping.")

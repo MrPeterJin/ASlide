@@ -49,7 +49,6 @@ ASlide supports the following whole-slide image formats:
 - **Python**: 3.10 or higher
 - **System Libraries**: OpenSlide library (for OpenSlide-based formats)
 
-**Note**: OpenCV 3.4.2 libraries are now bundled with ASlide, so you don't need to install OpenCV separately!
 
 ### Install from Source
 
@@ -64,7 +63,7 @@ python setup.py install
 
 The installation script will automatically:
 - Install required Python packages (numpy, Pillow, openslide-python, qptifffile, tifffile, pyisyntax)
-- Bundle OpenCV 3.4.2 shared libraries
+- Bundle OpenCV 3.4.2 and all dependencies
 - Copy vendor-specific shared libraries to the appropriate locations
 - Set up environment variables for library paths
 - Create helper scripts for environment configuration
