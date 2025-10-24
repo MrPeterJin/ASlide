@@ -208,8 +208,10 @@ class DeepZoomGenerator(object):
 
 
         # Round location down and size up, and add offset of active area
-        # SDPC SDK expects current level coordinates (like KFB), not level 0 coordinates
-        l_location_int = tuple(int(math.floor(l)) for l in l_location)
+        # Convert to level 0 coordinates (like KFB implementation)
+        # SDPC read_region expects level 0 coordinates and will convert them internally
+        l0_location = tuple(int(self._l0_from_l(slide_level, l) + l0_off)
+                    for l, l0_off in zip(l_location, self._l0_offset))
         
         l_size = tuple(int(min(math.ceil(self._l_from_z(dz_level, dz)),
                     l_lim - math.ceil(l)))
@@ -217,8 +219,9 @@ class DeepZoomGenerator(object):
                     zip(l_location, z_size, self._l_dimensions[slide_level]))
 
         # Return read_region() parameters plus tile size for final scaling
-        # SDPC uses current level coordinates (like KFB), not level 0 coordinates
-        return ((l_location_int, slide_level, l_size), z_size)
+        # Pass level 0 coordinates to read_region (same as KFB)
+        # read_region will convert them to current level coordinates internally
+        return ((l0_location, slide_level, l_size), z_size)
 
     def _l0_from_l(self, slide_level, l):
         return self._l0_l_downsamples[slide_level] * l
