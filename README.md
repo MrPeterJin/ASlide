@@ -4,7 +4,7 @@
 [![Platform](https://img.shields.io/badge/platform-Linux-lightgrey.svg)](https://www.linux.org/)
 [![License](https://img.shields.io/badge/license-GPL%203.0-green.svg)](https://www.gnu.org/licenses/gpl-3.0.en.html)
 
-> A comprehensive Python library for reading whole-slide images (WSI) in digital pathology with unified API and extensive format support.
+> A comprehensive Python library for reading whole-slide images (WSI) in digital pathology with a unified API and extensive format support.
 
 ## Overview
 
@@ -98,7 +98,7 @@ source /path/to/site-packages/Aslide/setup_env.sh
 ### Basic Usage
 
 ```python
-from Aslide.aslide import Slide
+from Aslide import Slide
 
 # Open a whole-slide image
 slide = Slide('path/to/your/slide.svs')
