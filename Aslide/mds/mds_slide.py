@@ -61,7 +61,7 @@ class MdsSlide:
     def detect_format(cls, filename):
         """Detect if file is MDS/MDSX format"""
         ext = os.path.splitext(filename)[1].lower()
-        return b"mds" if ext in ['.mds', '.mdsx'] else None
+        return "mds" if ext in ['.mds', '.mdsx'] else None
 
 
 class MdsSlideOLE2:

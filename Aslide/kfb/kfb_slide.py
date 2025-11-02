@@ -19,7 +19,14 @@ class KfbSlide(AbstractSlide):
 
     @classmethod
     def detect_format(cls, filename):
-        return kfb_lowlevel.detect_vendor(filename)
+        """Detect if file is KFB format"""
+        vendor = kfb_lowlevel.detect_vendor(filename)
+        if vendor:
+            # Convert bytes to string if needed
+            if isinstance(vendor, bytes):
+                return vendor.decode('utf-8', 'replace')
+            return str(vendor) if vendor else None
+        return None
 
     def close(self):
         kfb_lowlevel.kfbslide_close(self._osr)
@@ -27,6 +34,11 @@ class KfbSlide(AbstractSlide):
     @property
     def level_count(self):
         return kfb_lowlevel.kfbslide_get_level_count(self._osr)
+
+    @property
+    def dimensions(self):
+        """Return the dimensions of the highest resolution level (level 0)."""
+        return self.level_dimensions[0] if self.level_dimensions else (0, 0)
 
     @property
     def level_dimensions(self):

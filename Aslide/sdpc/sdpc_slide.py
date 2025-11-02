@@ -37,6 +37,15 @@ class SdpcSlide:
         # Initialize cached properties
         self._init_properties()
 
+    @classmethod
+    def detect_format(cls, filename):
+        """Detect if file is SDPC format"""
+        import os
+        ext = os.path.splitext(filename)[1].lower()
+        if ext in ['.sdpc']:
+            return "sdpc"
+        return None
+
     def _init_properties(self):
         """Initialize cached properties"""
         # Get basic properties
@@ -194,12 +203,12 @@ class SdpcSlide:
         img = Image.fromarray(rgb_array, 'RGB')
         return img
 
-    def get_thumbnail(self, thumbnail_size):
+    def get_thumbnail(self, size):
         """Get a thumbnail of the slide"""
         # Read from the highest level (lowest resolution)
         highest_level = self.level_count - 1
         thumbnail = self.read_region((0, 0), highest_level, self.level_dimensions[highest_level])
-        thumbnail = thumbnail.resize(thumbnail_size, Image.Resampling.LANCZOS)
+        thumbnail = thumbnail.resize(size, Image.Resampling.LANCZOS)
         return thumbnail
 
     def get_label_image(self):

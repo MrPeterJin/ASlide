@@ -1,5 +1,6 @@
 import math
 import numpy as np
+from PIL import Image
 
 from openslide import AbstractSlide, _OpenSlideMap
 from Aslide.tmap import tmap_lowlevel
@@ -131,11 +132,24 @@ class TmapSlide(AbstractSlide):
         nBottom = nTop + size[1]
         return tmap_lowlevel.get_image_size_ex(self._osr, nLeft, nTop, nRight, nBottom, fScale)
 
-    def associated_images(self, tag):
+    @property
+    def associated_images(self):
+        """Get associated images as a dictionary"""
+        images = {}
+        for tag_name, tag_value in Tags.items():
+            try:
+                img = tmap_lowlevel.get_image_data(self._osr, tag_value)
+                if img is not None:
+                    images[tag_name] = img
+            except:
+                pass
+        return images
+
+    def get_associated_image(self, tag):
+        """Get a specific associated image by tag name (legacy method)"""
         if tag in Tags:
             return tmap_lowlevel.get_image_data(self._osr, Tags[tag])
         else:
-            # raise Exception("Unrecgnized associated_images type [{}], avaliable tags are [{}]".format(tag, ",".join(Tags)))
             return None
 
     def read_region(self, location, level, size, nIndex=0):
@@ -146,11 +160,11 @@ class TmapSlide(AbstractSlide):
         
         return tmap_lowlevel.get_crop_image_data_ex(self._osr, nIndex, nLeft, nTop, nRight, nBottom, level)
 
-    def get_thumbnail(self, size=None):
+    def get_thumbnail(self, size):
+        """Get a thumbnail of the slide"""
         image = tmap_lowlevel.get_image_data(self._osr, 0)
         if size:
-            return image.resize(size)
-
+            return image.resize(size, Image.LANCZOS)
         return image
 
 

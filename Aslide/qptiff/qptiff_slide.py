@@ -293,26 +293,43 @@ class QptiffSlide(AbstractSlide):
     def get_biomarkers(self) -> List[str]:
         """Get list of available biomarkers"""
         return self._biomarkers.copy()
-    
+
+    def get_thumbnail(self, size: Tuple[int, int]) -> Image.Image:
+        """Get a thumbnail of the slide
+
+        Args:
+            size: (width, height) tuple giving the maximum size of the thumbnail
+
+        Returns:
+            PIL Image object
+        """
+        # Read from the lowest resolution level
+        last_level = self._level_count - 1
+        thumb = self.read_region((0, 0), last_level, self._level_dimensions[last_level])
+
+        # Resize to requested size while maintaining aspect ratio
+        thumb.thumbnail(size, Image.LANCZOS)
+        return thumb
+
     def _calculate_downsamples(self) -> Tuple[float, ...]:
         """Calculate downsample factors for each level"""
         if not self._level_dimensions:
             return tuple()
-        
+
         base_width, base_height = self._level_dimensions[0]
         downsamples = []
-        
+
         for width, height in self._level_dimensions:
             # Calculate downsample based on width (assuming square pixels)
             downsample = base_width / width
             downsamples.append(downsample)
-        
+
         return tuple(downsamples)
-    
+
     def __enter__(self):
         """Context manager entry"""
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit"""
         self.close()

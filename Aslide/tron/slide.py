@@ -248,14 +248,14 @@ class TronSlide:
         return self._level_count
     
     @property
-    def level_dimensions(self) -> List[Tuple[int, int]]:
+    def level_dimensions(self) -> Tuple[Tuple[int, int], ...]:
         """Get dimensions for all levels"""
-        return self._level_dimensions.copy()
-    
+        return tuple(self._level_dimensions)
+
     @property
-    def level_downsamples(self) -> List[float]:
+    def level_downsamples(self) -> Tuple[float, ...]:
         """Get downsamples for all levels"""
-        return self._level_downsamples.copy()
+        return tuple(self._level_downsamples)
     
     def get_best_level_for_downsample(self, downsample):
         """Return best slide level for a given overall downsample.
@@ -308,6 +308,25 @@ class TronSlide:
     
     def __del__(self):
         self.close()
+
+    @classmethod
+    def detect_format(cls, filename: str) -> Optional[str]:
+        """Detect if file is TRON format"""
+        import os
+        import zipfile
+
+        ext = os.path.splitext(filename)[1].lower()
+        if ext not in ['.tron']:
+            return None
+
+        # Check if it's a valid ZIP file
+        try:
+            if zipfile.is_zipfile(filename):
+                return "tron"
+        except:
+            pass
+
+        return None
 
     def read_region(self, location: Tuple[int, int], level: int, size: Tuple[int, int]) -> Image.Image:
         """
