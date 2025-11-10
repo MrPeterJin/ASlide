@@ -248,9 +248,31 @@ class CustomInstall(install):
             home / '.profile'
         ]
 
-        # Try to add the LD_LIBRARY_PATH to a shell config file
-        lib_paths_str = ':'.join(lib_paths)
-        export_line = f'export LD_LIBRARY_PATH={lib_paths_str}:$LD_LIBRARY_PATH'
+        # Create a dynamic shell script that finds Aslide installation at runtime
+        # This avoids hardcoding temporary build paths
+        shell_script = '''
+# Added by Aslide installation
+# Dynamically find Aslide installation directory
+_aslide_site_packages=$(python3 -c "import site; print(':'.join(site.getsitepackages()))" 2>/dev/null)
+if [ -n "$_aslide_site_packages" ]; then
+    IFS=':' read -ra _site_dirs <<< "$_aslide_site_packages"
+    for _site_dir in "${_site_dirs[@]}"; do
+        if [ -d "$_site_dir/Aslide" ]; then
+            _aslide_paths=""
+            for _vendor_lib in "$_site_dir/Aslide/opencv/lib" "$_site_dir/Aslide/sdpc/lib" "$_site_dir/Aslide/kfb/lib" "$_site_dir/Aslide/tmap/lib" "$_site_dir/Aslide/tron/lib"; do
+                if [ -d "$_vendor_lib" ]; then
+                    _aslide_paths="${_aslide_paths}:${_vendor_lib}"
+                fi
+            done
+            if [ -n "$_aslide_paths" ]; then
+                export LD_LIBRARY_PATH="${_aslide_paths#:}:$LD_LIBRARY_PATH"
+            fi
+            break
+        fi
+    done
+fi
+unset _aslide_site_packages _site_dirs _site_dir _vendor_lib _aslide_paths
+'''
 
         shell_updated = False
         for config_file in shell_config_files:
@@ -260,13 +282,42 @@ class CustomInstall(install):
                     with open(config_file, 'r') as f:
                         content = f.read()
 
-                    if 'Aslide' not in content and export_line not in content:
-                        with open(config_file, 'a') as f:
-                            f.write('\n# Added by Aslide installation\n')
-                            f.write(f'{export_line}\n')
-                        shell_updated = True
-                        print(f"\nUpdated shell configuration file: {config_file}")
-                        break
+                    # Remove old Aslide configuration if it exists
+                    if 'Added by Aslide installation' in content:
+                        lines = content.split('\n')
+                        new_lines = []
+                        skip_until_blank = False
+                        for line in lines:
+                            if 'Added by Aslide installation' in line:
+                                skip_until_blank = True
+                                continue
+                            if skip_until_blank:
+                                if line.strip() == '' or (not line.startswith('export LD_LIBRARY_PATH=') and
+                                                          not line.startswith('_aslide') and
+                                                          not line.startswith('if [') and
+                                                          not line.startswith('    ') and
+                                                          not line.startswith('fi') and
+                                                          not line.startswith('done') and
+                                                          not line.startswith('for ') and
+                                                          not line.startswith('IFS=') and
+                                                          not line.startswith('unset ')):
+                                    skip_until_blank = False
+                                    if line.strip() != '':
+                                        new_lines.append(line)
+                                continue
+                            new_lines.append(line)
+                        content = '\n'.join(new_lines)
+
+                        # Write back the cleaned content
+                        with open(config_file, 'w') as f:
+                            f.write(content)
+
+                    # Add the new dynamic configuration
+                    with open(config_file, 'a') as f:
+                        f.write(shell_script)
+                    shell_updated = True
+                    print(f"\nUpdated shell configuration file: {config_file}")
+                    break
                 except Exception as e:
                     print(f"\nWarning: Could not update shell config file {config_file}: {e}")
 
@@ -279,13 +330,14 @@ class CustomInstall(install):
         if shell_updated:
             print("\n1. Restart your shell or run:")
             print(f"   $ source {config_file}")
+            print("\n2. The LD_LIBRARY_PATH will be automatically set when you start a new shell session.")
         else:
             print("\n1. Import Aslide directly (environment will be set up automatically):")
             print("   >>> import Aslide")
             print("\n2. Source the setup script before running your Python code:")
             print(f"   $ source {setup_script_path}")
-            print("\n3. Add the following line to your shell configuration file (.bashrc, .zshrc, etc.):")
-            print(f"   {export_line}")
+            print("\n3. Or manually add Aslide environment setup to your shell configuration file.")
+            print("   The setup script will automatically find the Aslide installation directory.")
 
         print("\nInstallation directory: " + install_dir)
         print("="*80 + "\n")
