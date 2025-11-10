@@ -81,36 +81,24 @@ class MdsxSlide:
         # Decode base64 if needed
         if is_base64:
             data = base64.b64decode(data)
-        
-        # Get length without trailing zeros
-        length = self._get_length_without_trailing_zeros(data)
-        data = data[:length]
-        
-        # Remove ending (00 0D 00 0A) - 4 bytes
-        if len(data) >= 4:
-            data = data[:-4]
-        
-        # Remove ScanPath if needed
-        if remove_scan_path:
-            # This is complex in binary, so we'll do it after decoding
-            pass
-        
-        # Remove inside zeros (UTF-16LE to ASCII)
-        xml_bytes = self._remove_inside_zeros(data)
-        
-        # Convert to string
-        xml_str = xml_bytes.decode('utf-8', errors='ignore')
-        
-        # Remove ScanPath element
+
+        # Decode UTF-16LE to string
+        # The data is in UTF-16LE format, decode it directly
+        xml_str = data.decode('utf-16le', errors='ignore')
+
+        # Remove trailing null characters
+        xml_str = xml_str.rstrip('\x00')
+
+        # Remove ScanPath element if needed
         if remove_scan_path:
             xml_str = self._remove_scan_path(xml_str)
-        
+
         # Replace XML header
         if xml_str.startswith('<?xml'):
             # Find end of XML declaration
             end_idx = xml_str.find('?>') + 2
             xml_str = '<?xml version="1.0" ?>' + xml_str[end_idx:]
-        
+
         return xml_str
     
     def _parse_xml_properties(self, xml_str, prefix='motic'):
