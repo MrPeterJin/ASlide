@@ -243,6 +243,19 @@ class Slide(object):
 	def close(self):
 		self._osr.close()
 
+	def apply_color_correction(self, apply=True, style="Real"):
+		"""
+		Apply or disable color correction (SDPC only)
+
+		Args:
+			apply: Whether to apply color correction
+			style: Color correction style ("Real" or "Gorgeous")
+		"""
+		if self.format in ['.sdpc', '.SDPC']:
+			self._osr.apply_color_correction(apply, style)
+		else:
+			raise NotImplementedError(f"Color correction not supported for {self.format}")
+
 
 if __name__ == '__main__':
 	filepath = 'path/to/your/slide'
