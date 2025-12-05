@@ -79,7 +79,7 @@ class SdpcSlide:
 
     @property
     def level_dimensions(self):
-        """Get dimensions for each level"""
+        """Get dimensions for each level (excluding padding)"""
         if self._level_dimensions is None:
             dimensions = []
             for level in range(self.level_count):
@@ -88,7 +88,15 @@ class SdpcSlide:
                 sdpc_sdk.sqrayslide_get_level_size(
                     self.slide, level, byref(width), byref(height)
                 )
-                dimensions.append((width.value, height.value))
+                # Get padding size and subtract it
+                right_padding = c_int32()
+                bottom_padding = c_int32()
+                sdpc_sdk.sqrayslide_get_level_right_buttom_bounds_size(
+                    self.slide, level, byref(right_padding), byref(bottom_padding)
+                )
+                actual_width = width.value - right_padding.value
+                actual_height = height.value - bottom_padding.value
+                dimensions.append((actual_width, actual_height))
             self._level_dimensions = tuple(dimensions)
         return self._level_dimensions
 
@@ -205,10 +213,11 @@ class SdpcSlide:
 
     def get_thumbnail(self, size):
         """Get a thumbnail of the slide"""
+        self._check_closed()
         # Read from the highest level (lowest resolution)
         highest_level = self.level_count - 1
         thumbnail = self.read_region((0, 0), highest_level, self.level_dimensions[highest_level])
-        thumbnail = thumbnail.resize(size, Image.Resampling.LANCZOS)
+        thumbnail.thumbnail(size, Image.Resampling.LANCZOS)
         return thumbnail
 
     def get_label_image(self):
