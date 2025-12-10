@@ -27,6 +27,8 @@ import io
 from typing import Tuple, Dict, Optional, Any
 from PIL import Image
 
+from .color_correction import ColorCorrection
+
 
 class DyjSlide:
     """
@@ -74,6 +76,9 @@ class DyjSlide:
         # Unified coordinate system coverage
         self._unified_width: int = 0
         self._unified_height: int = 0
+
+        # Color correction
+        self._color_correction = ColorCorrection(style='Real')
 
         # Parse header
         self._parse_header()
@@ -588,7 +593,25 @@ class DyjSlide:
 
             result.paste(cropped, (paste_x, paste_y))
 
+        # Apply color correction if enabled
+        result = self._color_correction.apply(result)
+
         return result
+
+    def apply_color_correction(self, apply: bool = True, style: str = "Real"):
+        """Apply or disable color correction.
+
+        Args:
+            apply: Whether to apply color correction
+            style: Color correction style ("Real" or "Real2")
+        """
+        self._color_correction.enabled = apply
+        if style:
+            self._color_correction.set_style(style)
+
+    def get_color_correction_info(self) -> Dict:
+        """Get current color correction parameters."""
+        return self._color_correction.get_info()
 
     def close(self):
         """Close the slide and free resources."""
