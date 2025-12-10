@@ -254,15 +254,23 @@ class Slide(object):
 
 	def apply_color_correction(self, apply=True, style="Real"):
 		"""
-		Apply or disable color correction (SDPC and DYJ formats)
+		Apply or disable color correction (SDPC, DYJ, KFB, MDS and MDSX formats)
 
 		Args:
 			apply: Whether to apply color correction
-			style: Color correction style ("Real" or "Gorgeous")
+			style: Color correction style
+			       - SDPC: "Real" or "Gorgeous"
+			       - DYJ: "Real" or "Gorgeous"
+			       - KFB: "Real"
+			       - MDS/MDSX: "Real"
 		"""
 		if self.format in ['.sdpc', '.SDPC']:
 			self._osr.apply_color_correction(apply, style)
 		elif self.format in ['.dyj', '.DYJ']:
+			self._osr.apply_color_correction(apply, style)
+		elif self.format in ['.kfb', '.KFB']:
+			self._osr.apply_color_correction(apply, style)
+		elif self.format in ['.mds', '.MDS', '.mdsx', '.MDSX']:
 			self._osr.apply_color_correction(apply, style)
 		else:
 			raise NotImplementedError(f"Color correction not supported for {self.format}")

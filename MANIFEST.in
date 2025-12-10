@@ -7,6 +7,7 @@ recursive-include Aslide/opencv/lib *.so.*
 
 # Include library files
 recursive-include Aslide/kfb/lib *.so
+recursive-include Aslide/kfb/icc *.icm
 recursive-include Aslide/tmap/lib *.so
 recursive-include Aslide/tmap *.h
 recursive-include Aslide/sdpc/lib *
@@ -23,12 +24,17 @@ include Aslide/vsi/__init__.py
 
 # Include MDS files
 recursive-include Aslide/mds *.py
+recursive-include Aslide/mds/icc *.icm
 
 # Include QPTiff files
 recursive-include Aslide/qptiff *.py
 
 # Include iSyntax files
 recursive-include Aslide/isyntax *.py
+
+# Include DYJ files
+recursive-include Aslide/dyj *.py
+recursive-include Aslide/dyj/lut *.lut
 
 # Include documentation
 include README.md

@@ -11,6 +11,8 @@ from io import BytesIO
 from PIL import Image
 import re
 
+from .color_correction import ColorCorrection
+
 
 class MdsxSlide:
     """
@@ -24,7 +26,10 @@ class MdsxSlide:
         self._properties = {}
         self._level_data = []
         self._associated_images = {}
-        
+
+        # Color correction
+        self._color_correction = ColorCorrection(style='Real')
+
         # Open and parse the file
         self._open_file()
         self._parse_header()
@@ -422,7 +427,25 @@ class MdsxSlide:
                     cropped = tile.crop((src_x, src_y, src_x + crop_width, src_y + crop_height))
                     output.paste(cropped, (dst_x, dst_y))
 
+        # Apply color correction if enabled
+        output = self._color_correction.apply(output)
+
         return output
+
+    def apply_color_correction(self, apply: bool = True, style: str = "Real"):
+        """Apply or disable color correction.
+
+        Args:
+            apply: Whether to apply color correction
+            style: Color correction style ("Real")
+        """
+        self._color_correction.enabled = apply
+        if style:
+            self._color_correction.set_style(style)
+
+    def get_color_correction_info(self) -> dict:
+        """Get current color correction parameters."""
+        return self._color_correction.get_info()
 
     def get_thumbnail(self, size):
         """

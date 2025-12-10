@@ -3,6 +3,8 @@ from Aslide.kfb import kfb_lowlevel
 from PIL import Image
 from openslide import AbstractSlide, _OpenSlideMap
 
+from .color_correction import ColorCorrection
+
 
 class kfbRef:
     img_count = 0
@@ -13,6 +15,8 @@ class KfbSlide(AbstractSlide):
         AbstractSlide.__init__(self)
         self.__filename = filename
         self._osr = kfb_lowlevel.kfbslide_open(filename)
+        # Color correction
+        self._color_correction = ColorCorrection(style='Real')
 
     def __repr__(self):
         return '%s(%r)' % (self.__class__.__name__, self.__filename)
@@ -115,7 +119,27 @@ class KfbSlide(AbstractSlide):
         level_y = int(y / downsample)
 
         # Pass the level-specific coordinates to the underlying function
-        return kfb_lowlevel.kfbslide_read_roi_region(self._osr, level, level_x, level_y, width, height)
+        result = kfb_lowlevel.kfbslide_read_roi_region(self._osr, level, level_x, level_y, width, height)
+
+        # Apply color correction if enabled
+        result = self._color_correction.apply(result)
+
+        return result
+
+    def apply_color_correction(self, apply: bool = True, style: str = "Real"):
+        """Apply or disable color correction.
+
+        Args:
+            apply: Whether to apply color correction
+            style: Color correction style ("Real")
+        """
+        self._color_correction.enabled = apply
+        if style:
+            self._color_correction.set_style(style)
+
+    def get_color_correction_info(self) -> dict:
+        """Get current color correction parameters."""
+        return self._color_correction.get_info()
 
     def get_thumbnail(self, size):
         """Return a PIL.Image containing an RGB thumbnail of the image."""

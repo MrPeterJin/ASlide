@@ -15,6 +15,8 @@ try:
 except ImportError:
     raise ImportError("olefile is required for MDS support. Install with: pip install olefile")
 
+from .color_correction import ColorCorrection
+
 
 def detect_mds_format(filename):
     """
@@ -79,6 +81,9 @@ class MdsSlideOLE2:
 
         # Open OLE file
         self.ole = olefile.OleFileIO(filename)
+
+        # Color correction
+        self._color_correction = ColorCorrection(style='Real')
 
         # Parse structure
         self._parse_structure()
@@ -405,7 +410,25 @@ class MdsSlideOLE2:
                         print(f"Warning: Failed to read tile {tile_name}: {e}")
                     continue
 
+        # Apply color correction if enabled
+        result = self._color_correction.apply(result)
+
         return result
+
+    def apply_color_correction(self, apply: bool = True, style: str = "Real"):
+        """Apply or disable color correction.
+
+        Args:
+            apply: Whether to apply color correction
+            style: Color correction style ("Real")
+        """
+        self._color_correction.enabled = apply
+        if style:
+            self._color_correction.set_style(style)
+
+    def get_color_correction_info(self) -> dict:
+        """Get current color correction parameters."""
+        return self._color_correction.get_info()
 
     def close(self):
         """Close the slide"""
