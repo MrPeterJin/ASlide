@@ -37,6 +37,7 @@ ASlide supports the following whole-slide image formats:
 | SDPC | `.sdpc` | SQRAY | Native SDK |
 | TMAP | `.TMAP` | 3DHISTECH | Native SDK |
 | MDS | `.mds`, `.mdsx` | Motic | Native SDK |
+| DYJ | `.dyj` | DPT | Native SDK |
 | QPTiff | `.qptiff` | Akoya | qptifffile |
 | TRON | `.tron` | InteMedic | Native SDK |
 | iSyntax | `.isyntax` | Philips | pyisyntax |
@@ -208,6 +209,7 @@ The package has been tested on:
 
 - Red Hat 9.6 with Python 3.10
 - Ubuntu 24.04 LTS with Python 3.10
+- Ubuntu 22.04 LTS with Python 3.13
 - Ubuntu 22.04 LTS with Python 3.11
 - Ubuntu 22.04 LTS with Python 3.10
 

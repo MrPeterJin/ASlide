@@ -9,6 +9,7 @@ from Aslide.tron.slide import TronSlide
 from Aslide.mds.mds_slide import MdsSlide
 from Aslide.qptiff.qptiff_slide import QptiffSlide
 from Aslide.isyntax.isyntax_slide import IsyntaxSlide
+from Aslide.dyj.dyj_slide import DyjSlide
 
 
 class Slide(object):
@@ -87,7 +88,15 @@ class Slide(object):
 			except:
 				pass
 
-		# 9. openslide (fallback for generic formats)
+		# 9. dyj (德普特 WSI format)
+		if not read_success and self.format in ['.dyj', '.DYJ']:
+			try:
+				self._osr = DyjSlide(filepath)
+				read_success = True
+			except:
+				pass
+
+		# 10. openslide (fallback for generic formats)
 		if not read_success:
 			try:
 				self._osr = OpenSlide(filepath)

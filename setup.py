@@ -344,11 +344,11 @@ unset _aslide_site_packages _site_dirs _site_dir _vendor_lib _aslide_paths
 
 setup(
     name='Aslide',
-    version='1.5.2',
+    version='1.5.3',
     author='MrPeterJin',
     author_email='petergamsing@gmail.com',
     url='https://github.com/MrPeterJin/ASlide',
-    description='A comprehensive package to read whole-slide image (WSI) files supporting Openslide, KFB, SDPC, TMAP, MDS, VSI, QPTiff, TRON, and iSyntax formats with full DeepZoom support.',
+    description='A comprehensive package to read whole-slide image (WSI) files supporting Openslide, KFB, SDPC, TMAP, MDS, VSI, QPTiff, TRON, iSyntax, and DYJ formats with full DeepZoom support.',
     packages=find_packages(),
     include_package_data=True,
     package_data={
@@ -362,6 +362,7 @@ setup(
         'Aslide.qptiff': ['*.py'],
         'Aslide.tron': ['*.py', 'lib/*'],
         'Aslide.isyntax': ['*.py'],
+        'Aslide.dyj': ['*.py'],
     },
     cmdclass={'install': CustomInstall},
     platforms='linux',
