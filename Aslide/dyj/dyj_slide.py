@@ -142,6 +142,17 @@ class DyjSlide:
         self._file.seek(0x58)
         self._macro_size = struct.unpack('<I', self._file.read(4))[0]
 
+        # MPP (microns per pixel) - try to read from header at offset 0x10
+        # DYJ format stores mpp as a float (4 bytes)
+        self._file.seek(0x10)
+        mpp_raw = struct.unpack('<f', self._file.read(4))[0]
+        # Validate mpp value: should be positive and reasonable (0.1 - 1.0 μm/pixel typical)
+        if 0.05 < mpp_raw < 5.0:
+            self._mpp = mpp_raw
+        else:
+            # Default to 0.25 μm/pixel (40x magnification typical value)
+            self._mpp = 0.25
+
         # ImageInfo records offset
         # For V1 format: read offset from 0xb0
         # For V2 format: use fixed offset 0x150
@@ -301,6 +312,9 @@ class DyjSlide:
             'openslide.level[2].width': str(self._width // 16),
             'openslide.level[2].height': str(self._height // 16),
             'openslide.level[2].downsample': '16.0',
+            'openslide.mpp-x': str(self._mpp),
+            'openslide.mpp-y': str(self._mpp),
+            'openslide.objective-power': str(int(10.0 / self._mpp)) if self._mpp > 0 else '40',
             'dyj.version': hex(self._version),
             'dyj.tile_size': str(self._tile_size),
             'dyj.tiles_x': str(self._tiles_x),
@@ -412,7 +426,12 @@ class DyjSlide:
     def level_downsamples(self) -> Tuple[float, ...]:
         """Downsample factor for each level."""
         return (1.0, 4.0, 16.0)
-    
+
+    @property
+    def mpp(self) -> float:
+        """Microns per pixel at level 0."""
+        return self._mpp
+
     @property
     def properties(self) -> Dict[str, Any]:
         """Slide properties."""
@@ -597,6 +616,25 @@ class DyjSlide:
         result = self._color_correction.apply(result)
 
         return result
+
+    def read_fixed_region(self, location: Tuple[int, int], level: int,
+                          size: Tuple[int, int]) -> Image.Image:
+        """Read a fixed region from the slide (tile-based reading).
+
+        This method reads a single tile at the given location. The size parameter
+        indicates the expected tile size but is not strictly enforced.
+
+        Args:
+            location: (x, y) tuple of top-left corner in level 0 coordinates
+            level: pyramid level to read from (0, 1, or 2)
+            size: (width, height) tuple of the expected region size (used as hint)
+
+        Returns:
+            PIL Image of the tile at the requested location
+        """
+        # For DYJ format, read_fixed_region uses the same logic as read_region
+        # since DYJ tiles are already fixed-size (1280x1280 at level 0)
+        return self.read_region(location, level, size)
 
     def apply_color_correction(self, apply: bool = True, style: str = "Real"):
         """Apply or disable color correction.

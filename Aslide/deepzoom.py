@@ -3,6 +3,7 @@ from openslide.deepzoom import DeepZoomGenerator as OpenSlideDZG
 from Aslide.kfb.kfb_deepzoom import DeepZoomGenerator as KfbDZG
 from Aslide.tmap.tmap_deepzoom import DeepZoomGenerator as TmapDZG
 from Aslide.sdpc.sdpc_deepzoom import DeepZoomGenerator as SdpcDZG
+from Aslide.dyj.dyj_deepzoom import DeepZoomGenerator as DyjDZG
 
 try:
     from Aslide.mds.mds_deepzoom import DeepZoomGenerator as MdsDZG
@@ -37,6 +38,9 @@ class ADeepZoomGenerator(object):
         elif osr.format in ['.sdpc', '.SDPC']:
             # SDPC DeepZoomGenerator only accepts 4 parameters
             self._dzg = SdpcDZG(osr, tile_size, overlap, limit_bounds)
+        elif osr.format in ['.dyj', '.DYJ']:
+            # DYJ format uses specialized DeepZoom generator
+            self._dzg = DyjDZG(osr, tile_size, overlap, limit_bounds)
         elif osr.format in ['.tmap', '.TMAP']:
             self._dzg = TmapDZG(osr, 256, overlap, limit_bounds)
         elif osr.format in ['.mds', '.MDS', '.mdsx', '.MDSX'] and MdsDZG:
