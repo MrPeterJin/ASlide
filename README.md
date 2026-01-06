@@ -13,7 +13,7 @@
 ### Key Features
 
 - **Unified API**: Single interface for all supported formats
-- **Comprehensive Format Support**: 16+ WSI formats from major vendors
+- **Comprehensive Format Support**: 17+ WSI formats from major vendors
 - **DeepZoom Support**: Built-in tile server capabilities for web-based viewers
 - **Extensible Architecture**: Easy to add new format support
 - **Pure Python Interface**: Simple integration with existing Python workflows
@@ -26,21 +26,22 @@ ASlide supports the following whole-slide image formats:
 | Format | Extension | Vendor/Source | Backend |
 |--------|-----------|---------------|---------|
 | Aperio SVS | `.svs`, `.svslide` | Leica Biosystems | OpenSlide |
+| DYJ | `.dyj` | DPT | Native SDK |
+| Generic TIFF | `.tif`, `.tiff` | Various | OpenSlide |
 | Hamamatsu NDPI | `.ndpi` | Hamamatsu | OpenSlide |
+| Hamamatsu VMS/VMU | `.vms`, `.vmu` | Hamamatsu | OpenSlide |
+| iSyntax | `.isyntax` | Philips | pyisyntax |
+| iBL | `.ibl` | iBingLi | Native SDK |
+| KFB | `.kfb` | KFBio | Native SDK |
 | Leica SCN | `.scn` | Leica Biosystems | OpenSlide |
 | MIRAX | `.mrxs` | 3DHISTECH | OpenSlide |
-| Ventana BIF | `.bif` | Roche Ventana | OpenSlide |
-| Generic TIFF | `.tif`, `.tiff` | Various | OpenSlide |
+| MDS | `.mds`, `.mdsx` | Motic | Native SDK |
 | Olympus VSI | `.vsi` | Olympus | Bio-Formats |
-| Hamamatsu VMS/VMU | `.vms`, `.vmu` | Hamamatsu | OpenSlide |
-| KFB | `.kfb` | KFBio | Native SDK |
+| QPTiff | `.qptiff` | Akoya | qptifffile |
 | SDPC | `.sdpc` | SQRAY | Native SDK |
 | TMAP | `.TMAP` | 3DHISTECH | Native SDK |
-| MDS | `.mds`, `.mdsx` | Motic | Native SDK |
-| DYJ | `.dyj` | DPT | Native SDK |
-| QPTiff | `.qptiff` | Akoya | qptifffile |
 | TRON | `.tron` | InteMedic | Native SDK |
-| iSyntax | `.isyntax` | Philips | pyisyntax |
+| Ventana BIF | `.bif` | Roche Ventana | OpenSlide |
 
 ## Installation
 

@@ -348,7 +348,7 @@ setup(
     author='MrPeterJin',
     author_email='petergamsing@gmail.com',
     url='https://github.com/MrPeterJin/ASlide',
-    description='A comprehensive package to read whole-slide image (WSI) files supporting Openslide, KFB, SDPC, TMAP, MDS, VSI, QPTiff, TRON, iSyntax, and DYJ formats with full DeepZoom support.',
+    description='A comprehensive package to read whole-slide image (WSI) files supporting Openslide, KFB, SDPC, TMAP, MDS, VSI, QPTiff, TRON, iSyntax, DYJ, and IBL formats with full DeepZoom support.',
     packages=find_packages(),
     include_package_data=True,
     package_data={
@@ -363,6 +363,7 @@ setup(
         'Aslide.tron': ['*.py', 'lib/*'],
         'Aslide.isyntax': ['*.py'],
         'Aslide.dyj': ['*.py', 'lut/*.lut'],
+        'Aslide.ibl': ['*.py'],
     },
     cmdclass={'install': CustomInstall},
     platforms='linux',

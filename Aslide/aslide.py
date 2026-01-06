@@ -1,5 +1,6 @@
 import os
 
+from PIL import Image
 from openslide import OpenSlide
 from Aslide.kfb.kfb_slide import KfbSlide
 from Aslide.tmap.tmap_slide import TmapSlide
@@ -10,6 +11,7 @@ from Aslide.mds.mds_slide import MdsSlide
 from Aslide.qptiff.qptiff_slide import QptiffSlide
 from Aslide.isyntax.isyntax_slide import IsyntaxSlide
 from Aslide.dyj.dyj_slide import DyjSlide
+from Aslide.ibl.ibl_slide import IblSlide
 
 
 class Slide(object):
@@ -96,7 +98,15 @@ class Slide(object):
 			except:
 				pass
 
-		# 10. openslide (fallback for generic formats)
+		# 10. ibl (苏州秉理 BingLi WSI format)
+		if not read_success and self.format in ['.ibl', '.IBL']:
+			try:
+				self._osr = IblSlide(filepath)
+				read_success = True
+			except:
+				pass
+
+		# 11. openslide (fallback for generic formats)
 		if not read_success:
 			try:
 				self._osr = OpenSlide(filepath)
@@ -165,13 +175,14 @@ class Slide(object):
 		if hasattr(self, '_cached_associated_images'):
 			return self._cached_associated_images
 
+		result = {}
+
 		if hasattr(self._osr, 'associated_images'):
 			assoc = self._osr.associated_images
 
 			# Handle different interface types
 			if callable(assoc):
 				# TMAP-style method interface - convert to dict
-				result = {}
 				for tag in ['thumbnail', 'label', 'macro']:
 					try:
 						img = assoc(tag)
@@ -179,15 +190,11 @@ class Slide(object):
 							result[tag] = img
 					except:
 						pass
-				# Cache the result
-				self._cached_associated_images = result
-				return result
 			else:
 				# Standard dict interface (KFB, SDPC)
 				# For KFB, preload all images to avoid "closed slide" errors
 				if hasattr(assoc, '_keys') and hasattr(assoc, '__getitem__'):
 					# This is likely a KFB _AssociatedImageMap - preload all images
-					result = {}
 					try:
 						keys = assoc._keys()
 						for key in keys:
@@ -195,20 +202,68 @@ class Slide(object):
 								result[key] = assoc[key]
 							except:
 								pass
-						# Cache the preloaded result
-						self._cached_associated_images = result
-						return result
 					except:
-						# If preloading fails, return the original object (but don't cache it)
-						return assoc
+						# If preloading fails, try to copy what we can
+						pass
+				elif isinstance(assoc, dict):
+					# Standard dict (SDPC, MDS, etc.) - copy it
+					result = dict(assoc)
 				else:
-					# Standard dict (SDPC) - cache it
-					self._cached_associated_images = assoc
-					return assoc
-		else:
-			# Cache empty dict
-			self._cached_associated_images = {}
-			return {}
+					# Other dict-like objects
+					try:
+						result = dict(assoc)
+					except:
+						pass
+
+		# Auto-generate thumbnail if not present
+		if 'thumbnail' not in result:
+			try:
+				# Generate thumbnail from lowest resolution level
+				# Use a reasonable default size
+				thumbnail = self._generate_thumbnail_from_slide((512, 512))
+				if thumbnail is not None:
+					result['thumbnail'] = thumbnail
+			except:
+				pass
+
+		# Cache the result
+		self._cached_associated_images = result
+		return result
+
+	def _generate_thumbnail_from_slide(self, size):
+		"""Generate thumbnail from the lowest resolution level of the slide.
+
+		Args:
+			size: (width, height) tuple for thumbnail size
+
+		Returns:
+			PIL Image or None if generation fails
+		"""
+		try:
+			# Read from the highest level (lowest resolution)
+			highest_level = self.level_count - 1
+			level_dims = self.level_dimensions[highest_level]
+
+			# Read the entire highest level or a reasonable portion
+			read_width = min(level_dims[0], 2048)
+			read_height = min(level_dims[1], 2048)
+
+			thumbnail = self._osr.read_region((0, 0), highest_level, (read_width, read_height))
+
+			# Convert to RGB if necessary (some formats return RGBA)
+			if thumbnail.mode == 'RGBA':
+				# Create white background and paste
+				background = Image.new('RGB', thumbnail.size, (255, 255, 255))
+				background.paste(thumbnail, mask=thumbnail.split()[3])
+				thumbnail = background
+			elif thumbnail.mode != 'RGB':
+				thumbnail = thumbnail.convert('RGB')
+
+			# Resize to target size while maintaining aspect ratio
+			thumbnail.thumbnail(size, Image.LANCZOS)
+			return thumbnail
+		except Exception:
+			return None
 
 	def label_image(self, save_path):
 		if self.format in ['.tmap', '.TMAP']:

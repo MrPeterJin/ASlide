@@ -4,6 +4,7 @@ from Aslide.kfb.kfb_deepzoom import DeepZoomGenerator as KfbDZG
 from Aslide.tmap.tmap_deepzoom import DeepZoomGenerator as TmapDZG
 from Aslide.sdpc.sdpc_deepzoom import DeepZoomGenerator as SdpcDZG
 from Aslide.dyj.dyj_deepzoom import DeepZoomGenerator as DyjDZG
+from Aslide.ibl.ibl_deepzoom import DeepZoomGenerator as IblDZG
 
 try:
     from Aslide.mds.mds_deepzoom import DeepZoomGenerator as MdsDZG
@@ -58,6 +59,9 @@ class ADeepZoomGenerator(object):
         elif osr.format in ['.isyntax', '.ISYNTAX'] and IsyntaxDZG:
             # iSyntax format uses specialized DeepZoom generator
             self._dzg = IsyntaxDZG(osr, tile_size, overlap, limit_bounds)
+        elif osr.format in ['.ibl', '.IBL']:
+            # IBL format (苏州秉理 BingLi) uses specialized DeepZoom generator
+            self._dzg = IblDZG(osr, tile_size, overlap, limit_bounds)
         else:
             self._dzg = OpenSlideDZG(osr, tile_size, overlap, limit_bounds)
 
