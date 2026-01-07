@@ -37,17 +37,6 @@ class CustomInstall(install):
             else:
                 print(f"Warning: Source file {src_file} not found. Skipping.")
 
-        # Handle TMAP files
-        target_dir = os.path.join(self.install_lib, 'Aslide', 'tmap', 'lib')
-        self.mkpath(target_dir)
-        tmap_files = ['iViewerInterface.h', 'libiViewerSDK.so', 'openTMAP.so']
-        for tmap_file in tmap_files:
-            src_file = os.path.join(os.path.dirname(__file__), 'Aslide', 'tmap', 'lib', tmap_file)
-            if os.path.exists(src_file):
-                self.copy_file(src_file, target_dir)
-            else:
-                print(f"Warning: Source file {src_file} not found. Skipping.")
-
         # Handle TRON files
         target_dir = os.path.join(self.install_lib, 'Aslide', 'tron', 'lib')
         self.mkpath(target_dir)
@@ -109,7 +98,6 @@ class CustomInstall(install):
             ('opencv', 'lib'),
             ('sdpc', 'lib'),
             ('kfb', 'lib'),
-            ('tmap', 'lib'),
             ('tron', 'lib')
         ]
 
@@ -259,7 +247,7 @@ if [ -n "$_aslide_site_packages" ]; then
     for _site_dir in "${_site_dirs[@]}"; do
         if [ -d "$_site_dir/Aslide" ]; then
             _aslide_paths=""
-            for _vendor_lib in "$_site_dir/Aslide/opencv/lib" "$_site_dir/Aslide/sdpc/lib" "$_site_dir/Aslide/kfb/lib" "$_site_dir/Aslide/tmap/lib" "$_site_dir/Aslide/tron/lib"; do
+            for _vendor_lib in "$_site_dir/Aslide/opencv/lib" "$_site_dir/Aslide/sdpc/lib" "$_site_dir/Aslide/kfb/lib" "$_site_dir/Aslide/tron/lib"; do
                 if [ -d "$_vendor_lib" ]; then
                     _aslide_paths="${_aslide_paths}:${_vendor_lib}"
                 fi
@@ -355,7 +343,7 @@ setup(
         'Aslide': ['*.py'],
         'Aslide.opencv': ['lib/*'],
         'Aslide.kfb': ['lib/*', 'icc/*.icm'],
-        'Aslide.tmap': ['lib/*'],
+        'Aslide.tmap': ['*.py'],
         'Aslide.sdpc': ['lib/**/*', 'include/**/*', '*.py'],
         'Aslide.vsi': ['*.py', '**/*.py'],
         'Aslide.mds': ['*.py', 'icc/*.icm'],

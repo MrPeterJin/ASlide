@@ -12,11 +12,6 @@ except ImportError:
     MdsDZG = None
 
 try:
-    from Aslide.vsi.vsi_deepzoom import VsiDeepZoomGenerator as VsiDZG
-except ImportError:
-    VsiDZG = None
-
-try:
     from Aslide.qptiff.qptiff_deepzoom import QptiffDeepZoomGenerator as QptiffDZG
 except ImportError:
     QptiffDZG = None
@@ -47,9 +42,6 @@ class ADeepZoomGenerator(object):
         elif osr.format in ['.mds', '.MDS', '.mdsx', '.MDSX'] and MdsDZG:
             # MDS format uses specialized DeepZoom generator
             self._dzg = MdsDZG(osr, tile_size, overlap, limit_bounds)
-        elif osr.format in ['.vsi', '.VSI'] and VsiDZG:
-            # VSI format uses specialized DeepZoom generator
-            self._dzg = VsiDZG(osr, tile_size, overlap, limit_bounds)
         elif osr.format in ['.qptiff', '.QPTIFF'] and QptiffDZG:
             # QPTiff format uses specialized DeepZoom generator
             self._dzg = QptiffDZG(osr, tile_size, overlap, limit_bounds)
@@ -111,8 +103,8 @@ class ADeepZoomGenerator(object):
 if __name__ == '__main__':
     filepath = "path-to-file"
 
-    from aslide import Aslide
-    slide = Aslide(filepath)
+    from Aslide import Slide
+    slide = Slide(filepath)
 
     dzg = ADeepZoomGenerator(slide)
     print("level_count : ", dzg.level_count)

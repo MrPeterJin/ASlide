@@ -208,6 +208,9 @@ class MdsxSlide:
 
         self._parse_xml_properties(prop_xml_str, prefix='motic')
 
+        # Add vendor
+        self._properties['openslide.vendor'] = 'Motic'
+
         # Load associated images
         self._load_associated_images()
     

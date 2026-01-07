@@ -39,7 +39,7 @@ ASlide supports the following whole-slide image formats:
 | Olympus VSI | `.vsi` | Olympus | Bio-Formats |
 | QPTiff | `.qptiff` | Akoya | qptifffile |
 | SDPC | `.sdpc` | SQRAY | Native SDK |
-| TMAP | `.TMAP` | 3DHISTECH | Native SDK |
+| TMAP | `.TMAP` | UNIC | Native SDK |
 | TRON | `.tron` | InteMedic | Native SDK |
 | Ventana BIF | `.bif` | Roche Ventana | OpenSlide |
 
@@ -47,7 +47,7 @@ ASlide supports the following whole-slide image formats:
 
 ### Prerequisites
 
-- **Operating System**: Linux (tested on Ubuntu 22.04 LTS)
+- **Operating System**: Linux (> Ubuntu 22.04 LTS)
 - **Python**: 3.10 or higher
 - **System Libraries**: OpenSlide library (for OpenSlide-based formats)
 
@@ -61,6 +61,12 @@ cd ASlide
 
 # Install the package (dependencies will be installed automatically)
 python setup.py install
+```
+
+or use the following one-liner:
+
+```bash
+pip install git+https://github.com/MrPeterJin/ASlide.git
 ```
 
 The installation script will automatically:
@@ -83,7 +89,7 @@ import Aslide
 **Option 2: Manual Shell Configuration**
 ```bash
 # Add to your ~/.bashrc or ~/.zshrc
-export LD_LIBRARY_PATH=/path/to/site-packages/Aslide/sdpc/lib:/path/to/site-packages/Aslide/kfb/lib:/path/to/site-packages/Aslide/tmap/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/path/to/site-packages/Aslide/sdpc/lib:/path/to/site-packages/Aslide/kfb/lib:$LD_LIBRARY_PATH
 
 # Reload your shell configuration
 source ~/.bashrc
@@ -173,9 +179,7 @@ ASLIDE_PATH=/home/<username>/anaconda3/lib/python3.x/site-packages/Aslide
 
 # Verify library directories exist
 ls $ASLIDE_PATH/sdpc/lib
-ls $ASLIDE_PATH/tmap/lib
 ls $ASLIDE_PATH/kfb/lib
-ls $ASLIDE_PATH/mds/lib
 ls $ASLIDE_PATH/tron/lib
 ```
 
@@ -189,7 +193,7 @@ python setup.py install --force
 If libraries are installed but not found at runtime, manually set `LD_LIBRARY_PATH`:
 
 ```bash
-export LD_LIBRARY_PATH=$ASLIDE_PATH/sdpc/lib:$ASLIDE_PATH/kfb/lib:$ASLIDE_PATH/tmap/lib:$ASLIDE_PATH/mds/lib:$ASLIDE_PATH/tron/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=$ASLIDE_PATH/sdpc/lib:$ASLIDE_PATH/kfb/lib:$ASLIDE_PATH/tron/lib:$LD_LIBRARY_PATH
 ```
 
 #### 3. Permission Issues

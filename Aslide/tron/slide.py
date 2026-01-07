@@ -137,6 +137,7 @@ class TronSlide:
                 self._properties['openslide.mpp-y'] = str(self.mpp_y)
             
             self._properties['tron.sdk-version'] = 'official-1.1.1'
+            self._properties['openslide.vendor'] = 'Intermedic'
             
         except Exception as e:
             print(f"⚠️  SDK property loading failed: {e}")
