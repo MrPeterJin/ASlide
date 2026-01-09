@@ -4,6 +4,8 @@ IBL format reader for ASlide.
 IBL Format Structure (苏州秉理 BingLi WSI format):
 - SQLite 3.x database
 - Magic number: "ibl" in tbl_base_info.magicNo
+
+Version 1.x (legacy):
 - tbl_base_info: Basic slide information (dimensions, tile size, layers)
 - tbl_tile_info: Tile data (JPEG compressed)
   - Layer 0: 4x4 sub-tiles per image block (612x512 each, total 2448x2048)
@@ -11,17 +13,19 @@ IBL Format Structure (苏州秉理 BingLi WSI format):
 - tbl_shrink_info: Shrink layer tiles (layer 2, 16x downsample)
 - tbl_img_info: Image block index (maps img_id to grid position)
 - tbl_ext_info: Associated images (thumbnail, label, macro)
-  - type 1: macro image (JPEG)
-  - type 2: label image (JPEG)
-  - type 3: thumbnail image (JPEG)
-  - type 4: ROI data (JSON)
-  - type 6: scan parameters (JSON)
+
+Version 2.x (new):
+- tbl_base_info: Basic slide information
+- tbl_tileex_info: Direct tile storage by (layer, col, row)
+  - Multiple pyramid layers (0-7+), each tile is 512x512
+  - Tiles stored directly with JPEG data
+- tbl_ext_info: Associated images (thumbnail, label, macro)
 """
 
 import sqlite3
 import io
 import os
-from typing import Tuple, Dict, Optional, Any
+from typing import Tuple, Dict, Optional, Any, List
 from PIL import Image
 
 
@@ -33,20 +37,9 @@ class IblSlide:
     - Reading header information (dimensions, tile size)
     - Extracting thumbnail, label, and macro images
     - read_region for reading arbitrary regions
-    - Multiple pyramid levels (layer 0, 1, 2)
+    - Multiple pyramid levels
+    - Both v1.x and v2.x format versions
     """
-
-    # Sub-tile size (individual JPEG tiles in database)
-    SUB_TILE_WIDTH = 612
-    SUB_TILE_HEIGHT = 512
-    
-    # Sub-tiles per image block (4x4 grid)
-    SUB_TILES_X = 4
-    SUB_TILES_Y = 4
-    
-    # Image block size (composed of 4x4 sub-tiles)
-    BLOCK_WIDTH = SUB_TILE_WIDTH * SUB_TILES_X   # 2448
-    BLOCK_HEIGHT = SUB_TILE_HEIGHT * SUB_TILES_Y  # 2048
 
     # Associated image types in tbl_ext_info
     EXT_TYPE_MACRO = 1
@@ -61,64 +54,125 @@ class IblSlide:
         """
         if not os.path.exists(filename):
             raise FileNotFoundError(f"IBL file not found: {filename}")
-        
+
         self._filename = filename
         self._closed = False
-        
+
         # Open SQLite connection
         self._conn = sqlite3.connect(filename)
         self._conn.row_factory = sqlite3.Row
         self._cursor = self._conn.cursor()
-        
+
+        # Detect format version
+        self._detect_version()
+
         # Parse base info
         self._parse_base_info()
-        
-        # Build image block index
-        self._build_img_index()
-        
+
+        # Build image block index (v1 only)
+        if not self._is_v2:
+            self._build_img_index()
+
         # Cache properties
         self._init_properties()
+
+    def _detect_version(self):
+        """Detect IBL format version based on table structure."""
+        # Check if tbl_tileex_info exists (v2.0 indicator)
+        self._cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='tbl_tileex_info'"
+        )
+        has_tileex = self._cursor.fetchone() is not None
+
+        # Check if tbl_img_info exists (v1.0 indicator)
+        self._cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='tbl_img_info'"
+        )
+        has_img_info = self._cursor.fetchone() is not None
+
+        # v2.0 uses tbl_tileex_info, v1.0 uses tbl_img_info + tbl_tile_info
+        self._is_v2 = has_tileex and not has_img_info
 
     def _parse_base_info(self):
         """Parse basic slide information from tbl_base_info."""
         self._cursor.execute("SELECT * FROM tbl_base_info LIMIT 1")
         row = self._cursor.fetchone()
-        
+
         if not row:
             raise ValueError("Invalid IBL file: no base info found")
-        
+
         # Verify magic number
         if row['magicNo'] != 'ibl':
             raise ValueError(f"Invalid IBL file: expected magic 'ibl', got '{row['magicNo']}'")
-        
+
         self._version = row['version']
-        self._layer_count = row['layer_size']  # Usually 3
         self._ratio_step = row['ratio_step']   # Usually 4 (downsample factor between layers)
         self._total_width = int(row['total_img_width'])
         self._total_height = int(row['total_img_height'])
-        self._tile_width = row['tile_width']   # 612
+        self._tile_width = row['tile_width']   # 612 (v1) or 512 (v2)
         self._tile_height = row['tile_height'] # 512
-        self._img_width = row['img_width']     # 2448 (block width)
-        self._img_height = row['img_height']   # 2048 (block height)
+        self._img_width = row['img_width']     # 2448 (v1) or 1664 (v2)
+        self._img_height = row['img_height']   # 2048 (v1) or 1392 (v2)
         self._img_col = row['img_col']         # Grid columns
         self._img_row = row['img_row']         # Grid rows
         self._pixel_size = float(row['pixel_size']) if row['pixel_size'] else 0.00025
         self._max_zoom = row['max_zoom_rate']
-        
+
         # Calculate MPP (microns per pixel)
         # pixel_size is in mm, convert to microns
         self._mpp = self._pixel_size * 1000 if self._pixel_size > 0 else 0.25
 
-    def _build_img_index(self):
-        """Build image block index from tbl_img_info."""
-        self._img_index = {}  # {img_id: {'col': col, 'row': row, 'nX': nX, 'nY': nY}}
-        
+        if self._is_v2:
+            # v2: Build level info from tbl_tileex_info
+            self._build_v2_level_info()
+        else:
+            # v1: Use fixed 3 layers from base_info
+            self._layer_count = row['layer_size']  # Usually 3
+            # v1 specific: sub-tile and block sizes
+            self._sub_tile_width = 612
+            self._sub_tile_height = 512
+            self._sub_tiles_x = 4
+            self._sub_tiles_y = 4
+            self._block_width = self._sub_tile_width * self._sub_tiles_x   # 2448
+            self._block_height = self._sub_tile_height * self._sub_tiles_y  # 2048
+
+    def _build_v2_level_info(self):
+        """Build level information for v2.0 format from tbl_tileex_info."""
+        # Get all layers and their tile ranges
         self._cursor.execute("""
-            SELECT id, col, row, nX, nY 
-            FROM tbl_img_info 
+            SELECT layer, MIN(col) as min_col, MAX(col) as max_col,
+                   MIN(row) as min_row, MAX(row) as max_row, COUNT(*) as cnt
+            FROM tbl_tileex_info
+            GROUP BY layer
+            ORDER BY layer
+        """)
+
+        self._v2_layer_info = {}
+        layers = []
+        for row in self._cursor.fetchall():
+            layer = row['layer']
+            layers.append(layer)
+            self._v2_layer_info[layer] = {
+                'min_col': row['min_col'],
+                'max_col': row['max_col'],
+                'min_row': row['min_row'],
+                'max_row': row['max_row'],
+                'tile_count': row['cnt']
+            }
+
+        self._layer_count = len(layers)
+        self._v2_layers = sorted(layers)
+
+    def _build_img_index(self):
+        """Build image block index from tbl_img_info (v1.0 only)."""
+        self._img_index = {}  # {img_id: {'col': col, 'row': row, 'nX': nX, 'nY': nY}}
+
+        self._cursor.execute("""
+            SELECT id, col, row, nX, nY
+            FROM tbl_img_info
             WHERE layer = 0
         """)
-        
+
         for row in self._cursor.fetchall():
             self._img_index[row['id']] = {
                 'col': row['col'],
@@ -171,8 +225,7 @@ class IblSlide:
     @property
     def level_count(self) -> int:
         """Number of pyramid levels."""
-        # IBL has 3 layers: layer 0 (full), layer 1 (4x), layer 2 (16x in shrink_info)
-        return 3
+        return self._layer_count
 
     @property
     def dimensions(self) -> Tuple[int, int]:
@@ -182,16 +235,18 @@ class IblSlide:
     @property
     def level_dimensions(self) -> Tuple[Tuple[int, int], ...]:
         """Dimensions at each level."""
-        return (
-            (self._total_width, self._total_height),
-            (self._total_width // self._ratio_step, self._total_height // self._ratio_step),
-            (self._total_width // (self._ratio_step ** 2), self._total_height // (self._ratio_step ** 2)),
-        )
+        dims = []
+        for i in range(self._layer_count):
+            downsample = self._ratio_step ** i
+            w = max(1, self._total_width // downsample)
+            h = max(1, self._total_height // downsample)
+            dims.append((w, h))
+        return tuple(dims)
 
     @property
     def level_downsamples(self) -> Tuple[float, ...]:
         """Downsample factor for each level."""
-        return (1.0, float(self._ratio_step), float(self._ratio_step ** 2))
+        return tuple(float(self._ratio_step ** i) for i in range(self._layer_count))
 
     @property
     def properties(self) -> Dict[str, Any]:
@@ -265,8 +320,36 @@ class IblSlide:
         # Target is >= all levels, return the last level
         return self.level_count - 1
 
-    def _get_tile_layer0(self, img_id: int, sub_col: int, sub_row: int) -> Optional[Image.Image]:
-        """Get a sub-tile from layer 0.
+    # ==================== V2.0 Tile Methods ====================
+
+    def _get_tile_v2(self, layer: int, col: int, row: int) -> Optional[Image.Image]:
+        """Get a tile from v2.0 format (tbl_tileex_info).
+
+        Args:
+            layer: Pyramid layer (0, 1, 2, ...)
+            col: Tile column
+            row: Tile row
+
+        Returns:
+            PIL Image of the tile, or None if not found
+        """
+        self._cursor.execute("""
+            SELECT data FROM tbl_tileex_info
+            WHERE layer = ? AND col = ? AND row = ?
+        """, (layer, col, row))
+
+        result = self._cursor.fetchone()
+        if result and result['data']:
+            try:
+                return Image.open(io.BytesIO(result['data']))
+            except Exception:
+                pass
+        return None
+
+    # ==================== V1.0 Tile Methods ====================
+
+    def _get_tile_layer0_v1(self, img_id: int, sub_col: int, sub_row: int) -> Optional[Image.Image]:
+        """Get a sub-tile from layer 0 (v1.0 format).
 
         Args:
             img_id: Image block ID from tbl_img_info
@@ -289,8 +372,8 @@ class IblSlide:
                 pass
         return None
 
-    def _get_tile_layer1(self, img_id: int) -> Optional[Image.Image]:
-        """Get a tile from layer 1 (4x downsample).
+    def _get_tile_layer1_v1(self, img_id: int) -> Optional[Image.Image]:
+        """Get a tile from layer 1 (v1.0, 4x downsample).
 
         Args:
             img_id: Image block ID from tbl_img_info
@@ -311,8 +394,8 @@ class IblSlide:
                 pass
         return None
 
-    def _get_tile_layer2(self, x: int, y: int) -> Optional[Image.Image]:
-        """Get a tile from layer 2 (shrink layer, 16x downsample).
+    def _get_tile_layer2_v1(self, x: int, y: int) -> Optional[Image.Image]:
+        """Get a tile from layer 2 (v1.0, shrink layer, 16x downsample).
 
         Args:
             x: X coordinate in layer 2 coordinates
@@ -335,7 +418,7 @@ class IblSlide:
         return None
 
     def _find_img_id_for_position(self, grid_col: int, grid_row: int) -> Optional[int]:
-        """Find the image block ID for a given grid position.
+        """Find the image block ID for a given grid position (v1.0 only).
 
         Args:
             grid_col: Column in the image grid
@@ -349,13 +432,15 @@ class IblSlide:
                 return img_id
         return None
 
+    # ==================== Read Region ====================
+
     def read_region(self, location: Tuple[int, int], level: int,
                     size: Tuple[int, int]) -> Image.Image:
         """Read a region from the slide.
 
         Args:
             location: (x, y) tuple of top-left corner in level 0 coordinates
-            level: pyramid level to read from (0, 1, or 2)
+            level: pyramid level to read from
             size: (width, height) tuple of the region size at the specified level
 
         Returns:
@@ -373,23 +458,87 @@ class IblSlide:
         # Create output image
         result = Image.new('RGBA', (width, height), (255, 255, 255, 0))
 
-        if level == 0:
-            self._read_region_layer0(result, req_x, req_y, width, height)
-        elif level == 1:
-            self._read_region_layer1(result, req_x, req_y, width, height, downsample)
-        else:  # level == 2
-            self._read_region_layer2(result, req_x, req_y, width, height, downsample)
+        if self._is_v2:
+            self._read_region_v2(result, req_x, req_y, width, height, level, downsample)
+        else:
+            # v1.0 format
+            if level == 0:
+                self._read_region_layer0_v1(result, req_x, req_y, width, height)
+            elif level == 1:
+                self._read_region_layer1_v1(result, req_x, req_y, width, height, downsample)
+            else:  # level == 2
+                self._read_region_layer2_v1(result, req_x, req_y, width, height, downsample)
 
         return result
 
-    def _read_region_layer0(self, result: Image.Image, req_x: int, req_y: int,
-                            width: int, height: int):
-        """Read region from layer 0 (full resolution)."""
+    # ==================== V2.0 Read Region ====================
+
+    def _read_region_v2(self, result: Image.Image, req_x: int, req_y: int,
+                        width: int, height: int, level: int, downsample: int):
+        """Read region from v2.0 format using tbl_tileex_info."""
+        tile_w = self._tile_width
+        tile_h = self._tile_height
+
+        # Tile coverage in level 0 coordinates
+        tile_coverage_x = tile_w * downsample
+        tile_coverage_y = tile_h * downsample
+
+        # Calculate tile range we need
+        start_col = req_x // tile_coverage_x
+        start_row = req_y // tile_coverage_y
+        end_col = (req_x + width * downsample - 1) // tile_coverage_x
+        end_row = (req_y + height * downsample - 1) // tile_coverage_y
+
+        for tile_row in range(start_row, end_row + 1):
+            for tile_col in range(start_col, end_col + 1):
+                # Get tile
+                tile_img = self._get_tile_v2(level, tile_col, tile_row)
+                if tile_img is None:
+                    continue
+
+                if tile_img.mode != 'RGBA':
+                    tile_img = tile_img.convert('RGBA')
+
+                # Tile position in level 0 coordinates
+                tile_x0 = tile_col * tile_coverage_x
+                tile_y0 = tile_row * tile_coverage_y
+
+                # Calculate intersection in level 0 coords
+                inter_left = max(tile_x0, req_x)
+                inter_top = max(tile_y0, req_y)
+                inter_right = min(tile_x0 + tile_coverage_x, req_x + width * downsample)
+                inter_bottom = min(tile_y0 + tile_coverage_y, req_y + height * downsample)
+
+                # Convert to tile-local coordinates
+                crop_left = (inter_left - tile_x0) // downsample
+                crop_top = (inter_top - tile_y0) // downsample
+                crop_right = (inter_right - tile_x0) // downsample
+                crop_bottom = (inter_bottom - tile_y0) // downsample
+
+                # Clamp to actual tile size
+                crop_right = min(crop_right, tile_img.width)
+                crop_bottom = min(crop_bottom, tile_img.height)
+
+                if crop_right <= crop_left or crop_bottom <= crop_top:
+                    continue
+
+                cropped = tile_img.crop((crop_left, crop_top, crop_right, crop_bottom))
+
+                # Paste position in result
+                paste_x = (inter_left - req_x) // downsample
+                paste_y = (inter_top - req_y) // downsample
+                result.paste(cropped, (paste_x, paste_y))
+
+    # ==================== V1.0 Read Region ====================
+
+    def _read_region_layer0_v1(self, result: Image.Image, req_x: int, req_y: int,
+                               width: int, height: int):
+        """Read region from layer 0 (v1.0, full resolution)."""
         # Calculate which image blocks and sub-tiles we need
-        start_grid_col = req_x // self.BLOCK_WIDTH
-        start_grid_row = req_y // self.BLOCK_HEIGHT
-        end_grid_col = (req_x + width - 1) // self.BLOCK_WIDTH
-        end_grid_row = (req_y + height - 1) // self.BLOCK_HEIGHT
+        start_grid_col = req_x // self._block_width
+        start_grid_row = req_y // self._block_height
+        end_grid_col = (req_x + width - 1) // self._block_width
+        end_grid_row = (req_y + height - 1) // self._block_height
 
         for grid_row in range(start_grid_row, end_grid_row + 1):
             for grid_col in range(start_grid_col, end_grid_col + 1):
@@ -398,25 +547,25 @@ class IblSlide:
                     continue
 
                 # Block top-left in level 0 coordinates
-                block_x = grid_col * self.BLOCK_WIDTH
-                block_y = grid_row * self.BLOCK_HEIGHT
+                block_x = grid_col * self._block_width
+                block_y = grid_row * self._block_height
 
                 # Process each sub-tile in this block
-                for sub_row in range(self.SUB_TILES_Y):
-                    for sub_col in range(self.SUB_TILES_X):
+                for sub_row in range(self._sub_tiles_y):
+                    for sub_col in range(self._sub_tiles_x):
                         # Sub-tile top-left in level 0 coordinates
-                        tile_x = block_x + sub_col * self.SUB_TILE_WIDTH
-                        tile_y = block_y + sub_row * self.SUB_TILE_HEIGHT
+                        tile_x = block_x + sub_col * self._sub_tile_width
+                        tile_y = block_y + sub_row * self._sub_tile_height
 
                         # Check if this tile overlaps with our request
-                        if (tile_x + self.SUB_TILE_WIDTH <= req_x or
+                        if (tile_x + self._sub_tile_width <= req_x or
                             tile_x >= req_x + width or
-                            tile_y + self.SUB_TILE_HEIGHT <= req_y or
+                            tile_y + self._sub_tile_height <= req_y or
                             tile_y >= req_y + height):
                             continue
 
                         # Load the sub-tile
-                        tile_img = self._get_tile_layer0(img_id, sub_col, sub_row)
+                        tile_img = self._get_tile_layer0_v1(img_id, sub_col, sub_row)
                         if tile_img is None:
                             continue
 
@@ -426,8 +575,8 @@ class IblSlide:
                         # Calculate intersection
                         inter_left = max(tile_x, req_x)
                         inter_top = max(tile_y, req_y)
-                        inter_right = min(tile_x + self.SUB_TILE_WIDTH, req_x + width)
-                        inter_bottom = min(tile_y + self.SUB_TILE_HEIGHT, req_y + height)
+                        inter_right = min(tile_x + self._sub_tile_width, req_x + width)
+                        inter_bottom = min(tile_y + self._sub_tile_height, req_y + height)
 
                         # Crop from tile
                         crop_left = inter_left - tile_x
@@ -441,12 +590,12 @@ class IblSlide:
                         paste_y = inter_top - req_y
                         result.paste(cropped, (paste_x, paste_y))
 
-    def _read_region_layer1(self, result: Image.Image, req_x: int, req_y: int,
-                            width: int, height: int, downsample: int):
-        """Read region from layer 1 (4x downsample)."""
-        # Layer 1 tiles are 612x512, covering BLOCK_WIDTH x BLOCK_HEIGHT in level 0
-        tile_coverage_x = self.BLOCK_WIDTH  # Area covered in level 0 coords
-        tile_coverage_y = self.BLOCK_HEIGHT
+    def _read_region_layer1_v1(self, result: Image.Image, req_x: int, req_y: int,
+                               width: int, height: int, downsample: int):
+        """Read region from layer 1 (v1.0, 4x downsample)."""
+        # Layer 1 tiles are 612x512, covering block size in level 0
+        tile_coverage_x = self._block_width  # Area covered in level 0 coords
+        tile_coverage_y = self._block_height
 
         # Calculate grid range
         start_grid_col = req_x // tile_coverage_x
@@ -465,7 +614,7 @@ class IblSlide:
                 block_y = grid_row * tile_coverage_y
 
                 # Load the tile
-                tile_img = self._get_tile_layer1(img_id)
+                tile_img = self._get_tile_layer1_v1(img_id)
                 if tile_img is None:
                     continue
 
@@ -498,9 +647,9 @@ class IblSlide:
                 paste_y = (inter_top - req_y) // downsample
                 result.paste(cropped, (paste_x, paste_y))
 
-    def _read_region_layer2(self, result: Image.Image, req_x: int, req_y: int,
-                            width: int, height: int, downsample: int):
-        """Read region from layer 2 (shrink layer, 16x downsample)."""
+    def _read_region_layer2_v1(self, result: Image.Image, req_x: int, req_y: int,
+                               width: int, height: int, downsample: int):
+        """Read region from layer 2 (v1.0, shrink layer, 16x downsample)."""
         # Get all shrink tiles
         self._cursor.execute("SELECT x, y, data FROM tbl_shrink_info WHERE layerNo = 2")
 
