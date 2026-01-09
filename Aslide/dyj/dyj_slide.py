@@ -502,15 +502,28 @@ class DyjSlide:
     def get_best_level_for_downsample(self, downsample: float) -> int:
         """Get the best level for a given downsample factor.
 
+        This mirrors OpenSlide's behavior:
+        - Return the largest level whose downsample is <= target
+        - This ensures we don't over-downsample (lose resolution)
+
         Args:
             downsample: The desired downsample factor
 
         Returns:
             The level number
         """
-        for level, ds in enumerate(self.level_downsamples):
-            if ds >= downsample:
-                return level
+        downsamples = self.level_downsamples
+
+        # If target is smaller than level 0, return level 0
+        if downsample < downsamples[0]:
+            return 0
+
+        # Find the largest level with downsample <= target
+        for i in range(1, len(downsamples)):
+            if downsamples[i] > downsample:
+                return i - 1
+
+        # Target is >= all levels, return the last level
         return self.level_count - 1
 
     def read_region(self, location: Tuple[int, int], level: int,

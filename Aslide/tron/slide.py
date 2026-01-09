@@ -262,25 +262,27 @@ class TronSlide:
         """Return best slide level for a given overall downsample.
 
         This mirrors OpenSlide's behavior:
-        - Prefer the smallest level whose downsample is >= target
-        - If none found, return the last (lowest-res) level
+        - Return the largest level whose downsample is <= target
+        - This ensures we don't over-downsample (lose resolution)
         """
         # Get downsamples
         downs = list(self.level_downsamples)
-        
-        # TRON uses normal downsamples (1.0, 2.0, 4.0, etc.), no conversion needed
-        
+
         # Ensure downsamples are monotonically increasing
         for i in range(1, len(downs)):
             if downs[i] < downs[i-1]:
                 downs[i] = max(downs[i], downs[i-1])
 
-        # Find the best level: smallest level whose downsample >= target
-        for lvl, ds in enumerate(downs):
-            if ds >= downsample:
-                return lvl
-        
-        # If no level found, return the last (lowest-res) level
+        # If target is smaller than level 0, return level 0
+        if downsample < downs[0]:
+            return 0
+
+        # Find the largest level with downsample <= target
+        for i in range(1, len(downs)):
+            if downs[i] > downsample:
+                return i - 1
+
+        # Target is >= all levels, return the last level
         return self.level_count - 1
     
     @property
@@ -384,13 +386,14 @@ class TronSlide:
         return Image.fromarray(rgb_array, 'RGB')
 
     def _read_region_zip(self, x: int, y: int, level: int, width: int, height: int) -> Image.Image:
-        """Read region using ZIP-based fallback method"""
-        # This is the existing ZIP-based implementation
-        # (Implementation would be similar to the original tron_slide.py)
+        """Read region using ZIP-based fallback method.
 
-        # For now, create a white image as placeholder
-        image = Image.new('RGB', (width, height), (255, 255, 255))
-        return image
+        This method is not implemented. The TRON SDK is required for reading regions.
+        """
+        raise NotImplementedError(
+            "TRON ZIP-based fallback reading is not implemented. "
+            "Please ensure the TRON SDK library (libtronc.so) is available."
+        )
 
     def get_thumbnail(self, size: Tuple[int, int]) -> Image.Image:
         """

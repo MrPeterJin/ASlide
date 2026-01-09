@@ -33,8 +33,8 @@ class ADeepZoomGenerator(object):
     def __init__(self, osr, tile_size=254, overlap=1, limit_bounds=False, max_level_size=10000):
         if osr.format in ['.kfb', '.KFB']:
             self._dzg = KfbDZG(osr, tile_size, overlap, limit_bounds)
-        elif osr.format in ['.sdpc', '.SDPC']:
-            # SDPC DeepZoomGenerator only accepts 4 parameters
+        elif osr.format in ['.sdpc', '.SDPC', '.dyqx', '.DYQX']:
+            # SDPC/DYQX DeepZoomGenerator only accepts 4 parameters
             self._dzg = SdpcDZG(osr, tile_size, overlap, limit_bounds)
         elif osr.format in ['.dyj', '.DYJ']:
             # DYJ format uses specialized DeepZoom generator

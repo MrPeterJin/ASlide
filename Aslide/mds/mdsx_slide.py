@@ -479,17 +479,25 @@ class MdsxSlide:
         return thumbnail
 
     def get_best_level_for_downsample(self, downsample):
-        """Get the best level for a given downsample factor"""
-        best_level = 0
-        best_diff = abs(self.level_downsamples[0] - downsample)
+        """Get the best level for a given downsample factor.
 
-        for i, ds in enumerate(self.level_downsamples):
-            diff = abs(ds - downsample)
-            if diff < best_diff:
-                best_diff = diff
-                best_level = i
+        This mirrors OpenSlide's behavior:
+        - Return the largest level whose downsample is <= target
+        - This ensures we don't over-downsample (lose resolution)
+        """
+        downsamples = self.level_downsamples
 
-        return best_level
+        # If target is smaller than level 0, return level 0
+        if downsample < downsamples[0]:
+            return 0
+
+        # Find the largest level with downsample <= target
+        for i in range(1, len(downsamples)):
+            if downsamples[i] > downsample:
+                return i - 1
+
+        # Target is >= all levels, return the last level
+        return self.level_count - 1
 
     def close(self):
         """Close the file"""

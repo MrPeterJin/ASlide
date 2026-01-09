@@ -292,18 +292,25 @@ class MdsSlideOLE2:
         return images
 
     def get_best_level_for_downsample(self, downsample):
-        """Find the best level for a given downsample factor"""
-        level_downsamples = self.level_downsamples
-        best_level = 0
-        best_diff = abs(level_downsamples[0] - downsample)
+        """Find the best level for a given downsample factor.
 
-        for level, level_downsample in enumerate(level_downsamples):
-            diff = abs(level_downsample - downsample)
-            if diff < best_diff:
-                best_diff = diff
-                best_level = level
+        This mirrors OpenSlide's behavior:
+        - Return the largest level whose downsample is <= target
+        - This ensures we don't over-downsample (lose resolution)
+        """
+        downsamples = self.level_downsamples
 
-        return best_level
+        # If target is smaller than level 0, return level 0
+        if downsample < downsamples[0]:
+            return 0
+
+        # Find the largest level with downsample <= target
+        for i in range(1, len(downsamples)):
+            if downsamples[i] > downsample:
+                return i - 1
+
+        # Target is >= all levels, return the last level
+        return self.level_count - 1
 
     def get_thumbnail(self, size):
         """Get thumbnail image"""

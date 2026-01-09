@@ -13,7 +13,7 @@
 ### Key Features
 
 - **Unified API**: Single interface for all supported formats
-- **Comprehensive Format Support**: 18+ WSI formats from major vendors
+- **Comprehensive Format Support**: 20+ WSI formats from major vendors
 - **DeepZoom Support**: Built-in tile server capabilities for web-based viewers
 - **Extensible Architecture**: Easy to add new format support
 - **Pure Python Interface**: Simple integration with existing Python workflows
@@ -27,6 +27,7 @@ ASlide supports the following whole-slide image formats:
 |--------|-----------|---------------|---------|
 | Aperio SVS | `.svs`, `.svslide` | Leica Biosystems | OpenSlide |
 | DYJ | `.dyj` | DPT | Native SDK |
+| DYQX | `.dyqx` | SQRAY | Native SDK |
 | Generic TIFF | `.tif`, `.tiff` | Various | OpenSlide |
 | Hamamatsu NDPI | `.ndpi` | Hamamatsu | OpenSlide |
 | Hamamatsu VMS/VMU | `.vms`, `.vmu` | Hamamatsu | OpenSlide |
@@ -229,6 +230,26 @@ Contributions are welcome! Please feel free to submit a Pull Request. For major 
 - [**PrePATH**](https://github.com/birkhoffkiki/PrePATH) - A Pre-processing Tool for Pathology Images
 
 *Using ASlide in your project? Add it here by submitting a pull request!*
+
+## Legal Notice
+
+This repository is not associated with or endorsed by providers of the SDKs or file formats contained in this GitHub repository. This project is intended for educational purposes only. Vendors may contact me to improve their security or request the removal of their format support from this repository.
+
+Please note the following:
+
+**Disclaimer**: The SDKs, file formats, services, and trademarks mentioned in this repository belong to their respective owners. This project is not claiming any right over them nor is it affiliated with or endorsed by any of the providers mentioned.
+
+**Responsibility**: The author of this repository is not responsible for any consequences, damages, or losses arising from the use or misuse of this repository or the content provided by the third-party repositories. Users are solely responsible for their actions and any repercussions that may follow. We strongly recommend users to follow the terms of service of each vendor.
+
+**Educational Purposes Only**: This repository and its content are provided strictly for educational purposes. By using the information and code provided, users acknowledge that they are using the SDKs and libraries at their own risk and agree to comply with any applicable laws and regulations.
+
+**Copyright**: All content in this repository, including but not limited to code, images, and documentation, is the intellectual property of the repository author, unless otherwise stated. Unauthorized copying, distribution, or use of any content in this repository is strictly prohibited without the express written consent of the repository author.
+
+**Indemnification**: Users agree to indemnify, defend, and hold harmless the author of this repository from and against any and all claims, liabilities, damages, losses, or expenses, including legal fees and costs, arising out of or in any way connected with their use or misuse of this repository, its content, or related third-party SDKs.
+
+**Updates and Changes**: The author reserves the right to modify, update, or remove any content, information, or features in this repository at any time without prior notice. Users are responsible for regularly reviewing the content and any changes made to this repository.
+
+By using this repository or any code related to it, you agree to these terms. The author is not responsible for any copies, forks, or reuploads made by other users. This is the author's only account and repository. To prevent impersonation or irresponsible actions, you may comply with the GNU GPL license this Repository uses.
 
 ## License
 

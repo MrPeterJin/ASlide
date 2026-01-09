@@ -51,8 +51,8 @@ class Slide(object):
 			except:
 				pass
 
-		# 4. sdpc
-		if not read_success and self.format in ['.sdpc', '.SDPC']:
+		# 4. sdpc / dyqx (both use sqrayslide SDK)
+		if not read_success and self.format in ['.sdpc', '.SDPC', '.dyqx', '.DYQX']:
 			try:
 				self._osr = SdpcSlide(filepath)
 				if self._osr:
@@ -286,7 +286,7 @@ class Slide(object):
 	def label_image(self, save_path):
 		if self.format in ['.tmap', '.TMAP']:
 			return self._osr.associated_images('label')
-		elif self.format in ['.sdpc', '.SDPC']:
+		elif self.format in ['.sdpc', '.SDPC', '.dyqx', '.DYQX']:
 			return self._osr.saveLabelImg(save_path)
 		else:
 			return self._osr.associated_images.get('label', None)
@@ -308,9 +308,13 @@ class Slide(object):
 		:param location:  (tuple) – (x, y) tuple giving the top left pixel in the level 0 reference frame
 		:param level:  (int) – the level number
 		:param size:  (tuple) – (width, height) tuple giving the region size
-		:return: PIL.Image object
+		:return: PIL.Image object in RGBA mode
 		"""
-		return self._osr.read_region(location, level, size)
+		img = self._osr.read_region(location, level, size)
+		# Ensure consistent RGBA mode across all formats
+		if img.mode != 'RGBA':
+			img = img.convert('RGBA')
+		return img
 
 	def read_fixed_region(self, location, level, size):
 		"""
@@ -318,27 +322,31 @@ class Slide(object):
 		:param location:  (tuple) – (x, y) tuple giving the top left pixel in the level 0 reference frame
 		:param level:  (int) – the level number
 		:param size:  (tuple) – (width, height) tuple giving the region size
-		:return: PIL.Image object
+		:return: PIL.Image object in RGBA mode
 		"""
-		return self._osr.read_fixed_region(location, level, size)
+		img = self._osr.read_fixed_region(location, level, size)
+		# Ensure consistent RGBA mode across all formats
+		if img.mode != 'RGBA':
+			img = img.convert('RGBA')
+		return img
 
 	def close(self):
 		self._osr.close()
 
 	def apply_color_correction(self, apply=True, style="Real"):
 		"""
-		Apply or disable color correction (SDPC, DYJ, KFB, MDS, MDSX and TMAP formats)
+		Apply or disable color correction (SDPC, DYQX, DYJ, KFB, MDS, MDSX and TMAP formats)
 
 		Args:
 			apply: Whether to apply color correction
 			style: Color correction style
-			       - SDPC: "Real" or "Gorgeous"
+			       - SDPC/DYQX: "Real" or "Gorgeous"
 			       - DYJ: "Real" or "Gorgeous"
 			       - KFB: "Real"
 			       - MDS/MDSX: "Real"
 			       - TMAP: "Real"
 		"""
-		if self.format in ['.sdpc', '.SDPC']:
+		if self.format in ['.sdpc', '.SDPC', '.dyqx', '.DYQX']:
 			self._osr.apply_color_correction(apply, style)
 		elif self.format in ['.dyj', '.DYJ']:
 			self._osr.apply_color_correction(apply, style)

@@ -245,10 +245,24 @@ class IblSlide:
         return img
 
     def get_best_level_for_downsample(self, downsample: float) -> int:
-        """Get the best level for a given downsample factor."""
-        for level, ds in enumerate(self.level_downsamples):
-            if ds >= downsample:
-                return level
+        """Get the best level for a given downsample factor.
+
+        This mirrors OpenSlide's behavior:
+        - Return the largest level whose downsample is <= target
+        - This ensures we don't over-downsample (lose resolution)
+        """
+        downsamples = self.level_downsamples
+
+        # If target is smaller than level 0, return level 0
+        if downsample < downsamples[0]:
+            return 0
+
+        # Find the largest level with downsample <= target
+        for i in range(1, len(downsamples)):
+            if downsamples[i] > downsample:
+                return i - 1
+
+        # Target is >= all levels, return the last level
         return self.level_count - 1
 
     def _get_tile_layer0(self, img_id: int, sub_col: int, sub_row: int) -> Optional[Image.Image]:

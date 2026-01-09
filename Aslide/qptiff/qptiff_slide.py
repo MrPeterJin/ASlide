@@ -151,21 +151,28 @@ class QptiffSlide(AbstractSlide):
         return result
     
     def get_best_level_for_downsample(self, downsample: float) -> int:
-        """Get the best level for a given downsample factor"""
+        """Get the best level for a given downsample factor.
+
+        This mirrors OpenSlide's behavior:
+        - Return the largest level whose downsample is <= target
+        - This ensures we don't over-downsample (lose resolution)
+        """
         if not self._level_downsamples:
             return 0
-        
-        # Find the level with downsample closest to the requested value
-        best_level = 0
-        best_diff = abs(self._level_downsamples[0] - downsample)
-        
-        for i, level_downsample in enumerate(self._level_downsamples):
-            diff = abs(level_downsample - downsample)
-            if diff < best_diff:
-                best_diff = diff
-                best_level = i
-        
-        return best_level
+
+        downsamples = self._level_downsamples
+
+        # If target is smaller than level 0, return level 0
+        if downsample < downsamples[0]:
+            return 0
+
+        # Find the largest level with downsample <= target
+        for i in range(1, len(downsamples)):
+            if downsamples[i] > downsample:
+                return i - 1
+
+        # Target is >= all levels, return the last level
+        return len(downsamples) - 1
     
     def read_region(self, location: Tuple[int, int], level: int, size: Tuple[int, int]) -> Image.Image:
         """Read a region from the slide

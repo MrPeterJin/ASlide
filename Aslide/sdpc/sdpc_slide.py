@@ -145,16 +145,21 @@ class SdpcSlide:
         """Return best slide level for a given overall downsample.
 
         This mirrors OpenSlide's behavior:
-        - Prefer the smallest level whose downsample is >= target
-        - If none found, return the last (lowest-res) level
+        - Return the largest level whose downsample is <= target
+        - This ensures we don't over-downsample (lose resolution)
         """
-        # level_downsamples property already returns standard format (1.0, 2.0, 4.0, ...)
-        # so we can use it directly
-        for lvl, ds in enumerate(self.level_downsamples):
-            if ds >= downsample:
-                return lvl
+        downsamples = self.level_downsamples
 
-        # If no level found, return the last (lowest-res) level
+        # If target is smaller than level 0, return level 0
+        if downsample < downsamples[0]:
+            return 0
+
+        # Find the largest level with downsample <= target
+        for i in range(1, len(downsamples)):
+            if downsamples[i] > downsample:
+                return i - 1
+
+        # Target is >= all levels, return the last level
         return self.level_count - 1
 
     def read_region(self, location, level, size):
