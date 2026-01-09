@@ -353,6 +353,7 @@ setup(
         'Aslide.dyj': ['*.py', 'lut/*.lut'],
         'Aslide.ibl': ['*.py'],
         'Aslide.zyp': ['*.py'],
+        'Aslide.bif': ['*.py'],
     },
     cmdclass={'install': CustomInstall},
     platforms='linux',
