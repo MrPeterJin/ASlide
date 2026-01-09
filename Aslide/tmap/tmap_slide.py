@@ -12,6 +12,8 @@ from typing import Dict, List, Tuple, Optional, BinaryIO
 from PIL import Image
 from openslide import AbstractSlide
 
+from .color_correction import ColorCorrection
+
 
 # Image types for associated images
 class _ImageType:
@@ -130,6 +132,7 @@ class TmapSlide(AbstractSlide):
         self._shrink_tile_infos: List[_ShrinkTileInfo] = []
         self._image_infos: List[_ImageInfo] = []
         self._levels: List[Tuple[int, int]] = []
+        self._color_correction = ColorCorrection()
         self._open()
 
     def _open(self):
@@ -773,12 +776,36 @@ class TmapSlide(AbstractSlide):
             return self._get_tile_from_layer_info(layer, layer_idx, col, row)
         return None
 
+    def apply_color_correction(self, apply: bool, style: str = 'Real'):
+        """Enable or disable color correction.
+
+        Args:
+            apply: Whether to enable color correction
+            style: Color correction style ('Real')
+        """
+        if style != self._color_correction.style:
+            self._color_correction.set_style(style)
+        self._color_correction.enabled = apply
+
+    def get_color_correction_info(self) -> dict:
+        """Get color correction parameters info.
+
+        Returns:
+            dict with color correction status and parameters
+        """
+        return self._color_correction.get_info()
+
     def read_region(self, location: Tuple[int, int], level: int, size: Tuple[int, int]) -> Image.Image:
         """Read a region from the slide."""
         if self._header.version == 7:
             img = self._read_region_v7(location, level, size)
         else:
             img = self._read_region_v6(location, level, size)
+
+        # Apply color correction if enabled
+        if self._color_correction.enabled:
+            img = self._color_correction.apply(img)
+
         if img.mode != 'RGBA':
             img = img.convert('RGBA')
         return img

@@ -12,6 +12,8 @@ from Aslide.qptiff.qptiff_slide import QptiffSlide
 from Aslide.isyntax.isyntax_slide import IsyntaxSlide
 from Aslide.dyj.dyj_slide import DyjSlide
 from Aslide.ibl.ibl_slide import IblSlide
+from Aslide.zyp.zyp_slide import ZypSlide
+from Aslide.bif.bif_slide import BifSlide
 
 
 class Slide(object):
@@ -90,7 +92,7 @@ class Slide(object):
 			except:
 				pass
 
-		# 9. dyj (德普特 WSI format)
+		# 9. dyj
 		if not read_success and self.format in ['.dyj', '.DYJ']:
 			try:
 				self._osr = DyjSlide(filepath)
@@ -98,7 +100,7 @@ class Slide(object):
 			except:
 				pass
 
-		# 10. ibl (苏州秉理 BingLi WSI format)
+		# 10. ibl
 		if not read_success and self.format in ['.ibl', '.IBL']:
 			try:
 				self._osr = IblSlide(filepath)
@@ -106,7 +108,23 @@ class Slide(object):
 			except:
 				pass
 
-		# 11. openslide (fallback for generic formats)
+		# 11. zyp
+		if not read_success and self.format in ['.zyp', '.ZYP']:
+			try:
+				self._osr = ZypSlide(filepath)
+				read_success = True
+			except:
+				pass
+
+		# 12. bif
+		if not read_success and self.format in ['.bif', '.BIF']:
+			try:
+				self._osr = BifSlide(filepath)
+				read_success = True
+			except:
+				pass
+
+		# 13. openslide (fallback for generic formats)
 		if not read_success:
 			try:
 				self._osr = OpenSlide(filepath)
@@ -309,7 +327,7 @@ class Slide(object):
 
 	def apply_color_correction(self, apply=True, style="Real"):
 		"""
-		Apply or disable color correction (SDPC, DYJ, KFB, MDS and MDSX formats)
+		Apply or disable color correction (SDPC, DYJ, KFB, MDS, MDSX and TMAP formats)
 
 		Args:
 			apply: Whether to apply color correction
@@ -318,6 +336,7 @@ class Slide(object):
 			       - DYJ: "Real" or "Gorgeous"
 			       - KFB: "Real"
 			       - MDS/MDSX: "Real"
+			       - TMAP: "Real"
 		"""
 		if self.format in ['.sdpc', '.SDPC']:
 			self._osr.apply_color_correction(apply, style)
@@ -326,6 +345,8 @@ class Slide(object):
 		elif self.format in ['.kfb', '.KFB']:
 			self._osr.apply_color_correction(apply, style)
 		elif self.format in ['.mds', '.MDS', '.mdsx', '.MDSX']:
+			self._osr.apply_color_correction(apply, style)
+		elif self.format in ['.tmap', '.TMAP']:
 			self._osr.apply_color_correction(apply, style)
 		else:
 			raise NotImplementedError(f"Color correction not supported for {self.format}")

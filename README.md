@@ -13,7 +13,7 @@
 ### Key Features
 
 - **Unified API**: Single interface for all supported formats
-- **Comprehensive Format Support**: 17+ WSI formats from major vendors
+- **Comprehensive Format Support**: 18+ WSI formats from major vendors
 - **DeepZoom Support**: Built-in tile server capabilities for web-based viewers
 - **Extensible Architecture**: Easy to add new format support
 - **Pure Python Interface**: Simple integration with existing Python workflows
@@ -42,6 +42,7 @@ ASlide supports the following whole-slide image formats:
 | TMAP | `.TMAP` | UNIC | Native SDK |
 | TRON | `.tron` | InteMedic | Native SDK |
 | Ventana BIF | `.bif` | Roche Ventana | OpenSlide |
+| ZYP | `.zyp` | WinMedic | Native SDK |
 
 ## Installation
 
