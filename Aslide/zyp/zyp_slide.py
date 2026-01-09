@@ -50,7 +50,9 @@ class ZypSlide:
         self._tile_index: Dict[str, Tuple[int, int]] = {}
 
         # Properties
-        self._properties: Dict[str, str] = {}
+        self._properties: Dict[str, str] = {
+            'openslide.vendor': 'winmedic',
+        }
 
         # Associated images
         self._preview_pos: Optional[Tuple[int, int]] = None  # (start_pos, data_len)
