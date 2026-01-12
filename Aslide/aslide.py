@@ -151,10 +151,6 @@ class Slide(object):
 		if hasattr(self._osr, 'mpp') and self._osr.mpp is not None:
 			return self._osr.mpp
 
-		# Fallback to get_scan_scale for compatibility
-		if hasattr(self._osr, 'get_scan_scale'):
-			return self._osr.get_scan_scale
-
 		# Fallback to properties
 		if hasattr(self._osr, 'properties'):
 			if 'openslide.mpp-x' in self._osr.properties and 'openslide.mpp-y' in self._osr.properties:
@@ -164,7 +160,50 @@ class Slide(object):
 			elif 'openslide.mpp-x' in self._osr.properties:
 				return float(self._osr.properties['openslide.mpp-x'])
 
+		# Fallback to calculating from scan_scale/magnification if possible
+		if hasattr(self._osr, 'get_scan_scale'):
+			scale = self._osr.get_scan_scale() if callable(self._osr.get_scan_scale) else self._osr.get_scan_scale
+			if scale and scale > 0:
+				return 10.0 / scale
+
 		raise Exception("%s Has no attribute %s" % (self._osr.__class__.__name__, "mpp"))
+
+	@property
+	def magnification(self):
+		"""
+		Get the magnification of the slide.
+		Calculates from mpp if not directly available.
+		:return: float
+		"""
+		# 1. Try if the underlying slide has a magnification property
+		if hasattr(self._osr, 'magnification') and self._osr.magnification is not None:
+			return self._osr.magnification
+
+		# 2. Try get_scan_scale (common in TMAP)
+		if hasattr(self._osr, 'get_scan_scale'):
+			scale = self._osr.get_scan_scale() if callable(self._osr.get_scan_scale) else self._osr.get_scan_scale
+			if scale:
+				return float(scale)
+
+		# 3. Try to get objective power from properties
+		if hasattr(self._osr, 'properties'):
+			# Check common keys across different formats
+			for key in ['openslide.objective-power', 'sdpc.magnification', 'ventana.Magnification']:
+				if key in self._osr.properties:
+					try:
+						return float(self._osr.properties[key])
+					except (ValueError, TypeError):
+						pass
+
+		# 4. Fallback to calculating from MPP if possible
+		try:
+			mpp = self.mpp # Using the property above which handles various sources
+			if mpp and mpp > 0:
+				return 10.0 / mpp
+		except:
+			pass
+
+		return None
 
 	@property
 	def level_count(self):

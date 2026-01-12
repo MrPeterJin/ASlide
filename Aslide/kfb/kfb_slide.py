@@ -55,6 +55,36 @@ class KfbSlide(AbstractSlide):
                      for i in range(self.level_count))
 
     @property
+    def mpp(self):
+        """Microns per pixel"""
+        try:
+            # Try to get mpp from properties
+            props = self.properties
+            if 'openslide.mpp-x' in props:
+                return float(props['openslide.mpp-x'])
+        except:
+            pass
+        return None
+
+    @property
+    def magnification(self) -> Optional[float]:
+        """Get slide magnification"""
+        try:
+            # Check properties for common keys
+            props = self.properties
+            for key in ['openslide.objective-power', 'Magnification']:
+                if key in props:
+                    return float(props[key])
+            
+            # Fallback to mpp-based calculation
+            mpp = self.mpp
+            if mpp and mpp > 0:
+                return 10.0 / mpp
+        except:
+            pass
+        return None
+
+    @property
     def properties(self):
         return _KfbPropertyMap(self._osr)
 

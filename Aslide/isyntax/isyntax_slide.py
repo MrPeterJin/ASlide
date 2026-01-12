@@ -96,6 +96,7 @@ class IsyntaxSlide(AbstractSlide):
             'openslide.vendor': 'Philips',
             'openslide.mpp-x': str(self._isyntax.mpp_x),
             'openslide.mpp-y': str(self._isyntax.mpp_y),
+            'openslide.objective-power': str(int(10.0 / self._mpp)) if self._mpp > 0 else '40',
             'isyntax.barcode': self._isyntax.barcode,
             'isyntax.offset-x': str(self._isyntax.offset_x),
             'isyntax.offset-y': str(self._isyntax.offset_y),

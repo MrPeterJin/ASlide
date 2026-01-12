@@ -58,8 +58,9 @@ class SdpcSlide:
 
         # Cache properties for openslide compatibility
         self._properties = {
-            'openslide.mpp-x': mpp_x.value,
-            'openslide.mpp-y': mpp_y.value,
+            'openslide.mpp-x': str(mpp_x.value),
+            'openslide.mpp-y': str(mpp_y.value),
+            'openslide.objective-power': str(magnification.value),
             'openslide.vendor': 'TEKSQRAY',
             'sdpc.magnification': magnification.value
         }

@@ -212,6 +212,8 @@ class ZypSlide:
                         self._mpp = float(value)
                         self._properties['openslide.mpp-x'] = value
                         self._properties['openslide.mpp-y'] = value
+                        if self._mpp > 0:
+                            self._properties['openslide.objective-power'] = str(int(10.0 / self._mpp))
                     except ValueError:
                         pass
                     i += 2

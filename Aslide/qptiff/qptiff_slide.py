@@ -100,6 +100,28 @@ class QptiffSlide(AbstractSlide):
         return self._level_dimensions[0] if self._level_dimensions else (0, 0)
     
     @property
+    def mpp(self) -> Optional[float]:
+        """Microns per pixel"""
+        # Try to get from series metadata if available
+        # qptifffile usually stores resolution in metadata
+        try:
+            if hasattr(self._series, 'axes') and 'X' in self._series.axes:
+                # This depends on qptifffile implementation
+                pass
+        except:
+            pass
+        return None
+
+    @property
+    def magnification(self) -> Optional[float]:
+        """Get slide magnification"""
+        # Fallback to MPP calculation if mpp becomes available
+        mpp = self.mpp
+        if mpp and mpp > 0:
+            return 10.0 / mpp
+        return None
+
+    @property
     def properties(self) -> Dict[str, str]:
         """Slide properties"""
         props = {

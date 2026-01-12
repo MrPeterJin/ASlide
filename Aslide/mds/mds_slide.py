@@ -247,6 +247,18 @@ class MdsSlideOLE2:
         return self._level_downsamples
 
     @property
+    def magnification(self):
+        """Get the magnification of the slide."""
+        objective = self._xml_properties.get('objective')
+        if objective:
+            return float(objective)
+        
+        # Fallback to calculating from sampling rate (mpp)
+        if self.sampling_rate > 0:
+            return 10.0 / self.sampling_rate
+        return None
+
+    @property
     def properties(self):
         """Get slide properties"""
         props = {

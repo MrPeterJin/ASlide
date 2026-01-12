@@ -188,13 +188,17 @@ class IblSlide:
             'openslide.level-count': str(self.level_count),
             'openslide.mpp-x': str(self._mpp),
             'openslide.mpp-y': str(self._mpp),
-            'openslide.objective-power': str(self._max_zoom),
             'ibl.version': self._version,
             'ibl.tile_width': str(self._tile_width),
             'ibl.tile_height': str(self._tile_height),
             'ibl.img_col': str(self._img_col),
             'ibl.img_row': str(self._img_row),
         }
+        
+        # Add objective power to properties
+        mag = self.magnification
+        if mag:
+            self._properties['openslide.objective-power'] = str(mag)
         
         # Add level info
         for i, (w, h) in enumerate(self.level_dimensions):
@@ -247,6 +251,25 @@ class IblSlide:
     def level_downsamples(self) -> Tuple[float, ...]:
         """Downsample factor for each level."""
         return tuple(float(self._ratio_step ** i) for i in range(self._layer_count))
+
+    @property
+    def mpp(self) -> float:
+        """Microns per pixel."""
+        return self._mpp
+
+    @property
+    def magnification(self) -> Optional[float]:
+        """Get the objective power/magnification."""
+        if self._max_zoom:
+            try:
+                return float(self._max_zoom)
+            except (ValueError, TypeError):
+                pass
+        
+        # Fallback to calculation from MPP
+        if self._mpp > 0:
+            return 10.0 / self._mpp
+        return None
 
     @property
     def properties(self) -> Dict[str, Any]:

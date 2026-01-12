@@ -521,8 +521,14 @@ class TmapSlide(AbstractSlide):
             'tmap.height': str(self._header.height),
             'openslide.mpp-x': str(mpp),
             'openslide.mpp-y': str(mpp),
+            'openslide.objective-power': str(self._header.scan_scale),
             'openslide.level-count': str(self.level_count),
         }
+
+    @property
+    def mpp(self) -> float:
+        """Microns per pixel at level 0."""
+        return self._header.pixel_size * 1000
 
     def _get_image_info_by_name(self, name: str) -> Optional[_ImageInfo]:
         """Get _ImageInfo by name."""

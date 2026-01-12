@@ -395,6 +395,13 @@ class DyjSlide:
         return None
     
     @property
+    def magnification(self) -> float:
+        """Get slide magnification."""
+        if self._mpp > 0:
+            return 10.0 / self._mpp
+        return 40.0
+
+    @property
     def level_count(self) -> int:
         """Number of pyramid levels."""
         # DYJ has 3 tile sizes: 1280, 320, 80

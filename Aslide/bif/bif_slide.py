@@ -274,6 +274,36 @@ class BifSlide(AbstractSlide):
         return len(self._levels)
 
     @property
+    def mpp(self) -> Optional[float]:
+        """Microns per pixel."""
+        try:
+            # Check properties first
+            props = self.properties
+            if 'openslide.mpp-x' in props:
+                return float(props['openslide.mpp-x'])
+        except:
+            pass
+        return None
+
+    @property
+    def magnification(self) -> Optional[float]:
+        """Get slide magnification."""
+        try:
+            # Check properties
+            props = self.properties
+            mag = props.get('openslide.objective-power')
+            if mag:
+                return float(mag)
+            
+            # Fallback to MPP calculation
+            mpp = self.mpp
+            if mpp and mpp > 0:
+                return 10.0 / mpp
+        except:
+            pass
+        return None
+
+    @property
     def level_dimensions(self) -> Tuple[Tuple[int, int], ...]:
         """Dimensions at each pyramid level."""
         return tuple(self._levels)

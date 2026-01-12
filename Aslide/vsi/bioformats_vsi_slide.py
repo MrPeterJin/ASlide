@@ -156,6 +156,23 @@ class BioFormatsVsiSlide(AbstractSlide):
 
         return None
     
+    @property
+    def magnification(self) -> Optional[float]:
+        """Get slide magnification."""
+        # Check properties
+        props = self.properties
+        if 'openslide.objective-power' in props:
+            try:
+                return float(props['openslide.objective-power'])
+            except:
+                pass
+        
+        # Fallback to MPP calculation
+        mpp = self.mpp
+        if mpp and mpp > 0:
+            return 10.0 / mpp
+        return None
+    
     def read_region(self, location: Tuple[int, int], level: int, size: Tuple[int, int]) -> Image.Image:
         """Read a region from the slide."""
         if level != 0:

@@ -136,6 +136,9 @@ class TronSlide:
             if self.mpp_y is not None:
                 self._properties['openslide.mpp-y'] = str(self.mpp_y)
             
+            if self.mpp_x and self.mpp_x > 0:
+                self._properties['openslide.objective-power'] = str(int(10.0 / self.mpp_x))
+            
             self._properties['tron.sdk-version'] = 'official-1.1.1'
             self._properties['openslide.vendor'] = 'Intermedic'
             

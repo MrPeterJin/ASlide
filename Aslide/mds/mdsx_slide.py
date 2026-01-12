@@ -330,6 +330,24 @@ class MdsxSlide:
         return self._associated_images.copy()
     
     @property
+    def magnification(self):
+        """Get the objective power/magnification."""
+        # Check standard properties
+        for key in ['openslide.objective-power', 'motic.Objective', 'Objective']:
+            val = self._properties.get(key)
+            if val:
+                try:
+                    return float(val)
+                except:
+                    pass
+        
+        # Fallback to MPP calculation
+        mpp = self.mpp
+        if mpp and mpp > 0:
+            return 10.0 / mpp
+        return None
+
+    @property
     def mpp(self):
         """Microns per pixel"""
         scale = self._properties.get('motic.Scale')
