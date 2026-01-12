@@ -1,4 +1,5 @@
 import io
+from typing import Optional
 from Aslide.kfb import kfb_lowlevel
 from PIL import Image
 from openslide import AbstractSlide, _OpenSlideMap
