@@ -25,6 +25,40 @@ except:
     soPath = os.path.join(dirname, 'lib/libkfbslide.so')
     _lib = cdll.LoadLibrary(soPath)
 
+# Load libImageOperationLib.so for memory deallocation
+# Attempt to load from system path first, then local lib directory
+_libOp = None
+try:
+    if os.path.exists('libImageOperationLib.so'):
+        _libOp = cdll.LoadLibrary('libImageOperationLib.so')
+    else:
+        # Try loading as system library
+        _libOp = cdll.LoadLibrary('libImageOperationLib.so')
+except:
+    pass
+
+if _libOp is None:
+    # Fallback to local lib directory
+    dirname, _ = os.path.split(os.path.abspath(__file__))
+    libOpPath = os.path.join(dirname, 'lib/libImageOperationLib.so')
+    if os.path.exists(libOpPath):
+        _libOp = cdll.LoadLibrary(libOpPath)
+    else:
+        raise Exception("libImageOperationLib.so not found, please check ASlide installation.")
+
+if _libOp is not None:
+    DeleteImageDataFunc = _libOp.DeleteImageDataFunc
+    DeleteImageDataFunc.argtypes = [c_void_p]
+    DeleteImageDataFunc.restype = c_int
+else:
+    # Define a dummy function to prevent crash on import, but this will leak or crash on use.
+    # Better to fail loudly? Or just warn?
+    # Given the user context, better to fail if we depend on it.
+    print("Warning: libImageOperationLib.so not found. Memory leak may occur.")
+    def DeleteImageDataFunc(ptr):
+        pass
+
+
 class KFBSlideError(Exception):
     """docstring for KFBSlideError"""
 
@@ -136,7 +170,14 @@ def kfbslide_read_region(osr, level, pos_x, pos_y):
         raise ValueError("Fail to read region")
     # import numpy as np
     # return np.ctypeslib.as_array(pixel, shape=(data_length.value,))
-    return PIL.Image.open(io.BytesIO(np.ctypeslib.as_array(pixel, shape=(data_length.value,)))).convert('RGBA')
+    
+    # Copy data to Python-managed memory
+    arr = np.ctypeslib.as_array(pixel, shape=(data_length.value,)).copy()
+    
+    # Free C memory
+    DeleteImageDataFunc(pixel)
+    
+    return PIL.Image.open(io.BytesIO(arr)).convert('RGBA')
 
 def kfbslide_read_roi_region(osr, level, pos_x, pos_y, width, height):
     data_length = c_int()
@@ -147,7 +188,14 @@ def kfbslide_read_roi_region(osr, level, pos_x, pos_y, width, height):
 
     # import numpy as np
     # return np.ctypeslib.as_array(pixel, shape=(data_length.value,))
-    return PIL.Image.open(io.BytesIO(np.ctypeslib.as_array(pixel, shape=(data_length.value,)))).convert('RGBA')
+    
+    # Copy data to Python-managed memory
+    arr = np.ctypeslib.as_array(pixel, shape=(data_length.value,)).copy()
+    
+    # Free C memory
+    DeleteImageDataFunc(pixel)
+    
+    return PIL.Image.open(io.BytesIO(arr)).convert('RGBA')
 
 kfbslide_property_names = _func("kfbslide_get_property_names", POINTER(c_char_p),
                                     [_KfbSlide], _check_name_list)
@@ -181,7 +229,11 @@ def kfbslide_read_associated_image(osr, name):
     pixel = POINTER(c_ubyte)()
     _kfbslide_read_associated_image(osr, name, byref(pixel))
     import numpy as np
-    narray = np.ctypeslib.as_array(pixel, shape=(data_length,))
+    narray = np.ctypeslib.as_array(pixel, shape=(data_length,)).copy()
+    
+    # Free C memory
+    DeleteImageDataFunc(pixel)
+    
     from io import BytesIO
     buf = BytesIO(narray)
     from PIL import Image
