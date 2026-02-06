@@ -4,16 +4,50 @@ from __future__ import annotations
 import ctypes
 from ctypes import *
 import os
+import sys
 
 # Load the SDPC SDK shared library bundled with Aslide
 dirname = os.path.dirname(os.path.abspath(__file__))
-sdk_lib_path = os.path.join(dirname, 'lib', 'libsqrayslideservice.so')
+lib_dir = os.path.join(dirname, 'lib')
+sdk_lib_path = os.path.join(lib_dir, 'libsqrayslideservice.so')
 
 if not os.path.exists(sdk_lib_path):
     raise RuntimeError(f"SDPC SDK library not found at: {sdk_lib_path}")
 
-# Load the library
-sdpc_sdk = ctypes.CDLL(sdk_lib_path)
+# Pre-load critical dependencies with absolute paths
+# This ensures they are found before loading the main library
+# Note: Modifying LD_LIBRARY_PATH at runtime doesn't work for already-running processes
+# Order matters: load dependencies before the libraries that depend on them
+_preload_libs = [
+    'libavutil.so.56.60.100',  # Base library, must load first
+    'libswresample.so.3',       # Depends on libavutil
+    'libx264.so.148',           # Codec library
+    'libx265.so.79',            # Codec library
+    'libavcodec.so.58',         # Depends on above libraries
+    'libswscale.so',            # Scaling library
+]
+
+_loaded_deps = []
+for lib_name in _preload_libs:
+    lib_path = os.path.join(lib_dir, lib_name)
+    if os.path.exists(lib_path):
+        try:
+            # Load with RTLD_GLOBAL so symbols are available to other libraries
+            _loaded_deps.append(ctypes.CDLL(lib_path, mode=ctypes.RTLD_GLOBAL))
+        except OSError as e:
+            # Non-critical: continue even if preload fails
+            print(f"Warning: Failed to preload {lib_name}: {e}", file=sys.stderr)
+
+# Load the main library
+try:
+    sdpc_sdk = ctypes.CDLL(sdk_lib_path, mode=ctypes.RTLD_GLOBAL)
+except OSError as e:
+    # If loading fails, try to provide helpful error message
+    raise RuntimeError(
+        f"Failed to load SDPC SDK library from {sdk_lib_path}. "
+        f"Make sure all dependencies are available in {lib_dir}. "
+        f"Original error: {e}"
+    ) from e
 
 # Backwards compatibility alias for legacy imports
 sqrayslide = sdpc_sdk  # type: ignore
