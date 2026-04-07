@@ -7,7 +7,6 @@ Direction="LEFT"/"DOWN" attributes which OpenSlide doesn't support.
 Uses tifffile for reading BigTIFF structure directly.
 """
 
-import io
 import os
 import xml.etree.ElementTree as ET
 from typing import Dict, List, Optional, Tuple, Any
@@ -16,16 +15,15 @@ from PIL import Image
 from openslide import AbstractSlide
 
 try:
-    import tifffile
-    TIFFFILE_AVAILABLE = True
+    import tifffile as _tifffile
 except ImportError:
-    TIFFFILE_AVAILABLE = False
+    _tifffile = None
 
 
 class BifSlide(AbstractSlide):
     """
     BIF slide reader for Ventana BigTIFF files.
-    
+
     BIF file structure:
     - Page 0: Label image (RGB, uncompressed)
     - Page 1: Probability/mask image (grayscale, LZW)
@@ -35,31 +33,37 @@ class BifSlide(AbstractSlide):
     def __init__(self, filename: str):
         """Initialize BIF slide reader."""
         AbstractSlide.__init__(self)
-        
-        if not TIFFFILE_AVAILABLE:
-            raise ImportError("tifffile is required for BIF support. Install with: pip install tifffile")
-        
+
+        if _tifffile is None:
+            raise ImportError(
+                "tifffile is required for BIF support. Install with: pip install tifffile"
+            )
+
         if not os.path.exists(filename):
             raise FileNotFoundError(f"BIF file not found: {filename}")
-        
-        self._filename = filename
-        self._tiff: Optional[tifffile.TiffFile] = None
+
+        self._filename: str = filename
+        self._tiff: Any = None
         self._levels: List[Tuple[int, int]] = []
         self._level_pages: List[int] = []  # Map level index to page index
         self._properties: Dict[str, str] = {}
         self._associated_images: Dict[str, Image.Image] = {}
-        
+
         self._open()
 
     def _open(self):
         """Open and parse the BIF file."""
-        self._tiff = tifffile.TiffFile(self._filename)
-        
+        tifffile_module = _tifffile
+        if tifffile_module is None:
+            return
+        self._tiff = tifffile_module.TiffFile(self._filename)
+
         # Parse pages to find pyramid levels and associated images
         for i, page in enumerate(self._tiff.pages):
-            desc = page.tags.get(270)  # ImageDescription
-            desc_value = desc.value if desc else ""
-            
+            tags = getattr(page, "tags", None)
+            desc = tags.get(270) if tags is not None else None
+            desc_value = desc.value if desc is not None else ""
+
             if desc_value == "Label_Image":
                 # Label image - may contain combined label+macro
                 self._load_label_macro_image(page)
@@ -81,7 +85,7 @@ class BifSlide(AbstractSlide):
         # Generate macro from lowest resolution level if not already present
         self._generate_macro()
 
-    def _load_label_macro_image(self, page: 'tifffile.TiffPage'):
+    def _load_label_macro_image(self, page: Any):
         """Load label and macro images from Label_Image page.
 
         Ventana BIF files store a combined label+macro image in the Label_Image page.
@@ -92,29 +96,29 @@ class BifSlide(AbstractSlide):
         try:
             data = page.asarray()
             if len(data.shape) == 3 and data.shape[2] == 3:
-                img = Image.fromarray(data, mode='RGB')
+                img = Image.fromarray(data, mode="RGB")
             elif len(data.shape) == 2:
-                img = Image.fromarray(data, mode='L')
+                img = Image.fromarray(data, mode="L")
             else:
                 img = Image.fromarray(data)
 
             # Store as label
-            self._associated_images['label'] = img
+            self._associated_images["label"] = img
 
             # For Ventana BIF, the Label_Image typically shows the slide with barcode
             # Use the same image as macro (it's the slide overview)
-            self._associated_images['macro'] = img.copy()
+            self._associated_images["macro"] = img.copy()
         except Exception:
             pass
 
-    def _load_associated_image(self, page: 'tifffile.TiffPage', name: str):
+    def _load_associated_image(self, page: Any, name: str):
         """Load an associated image from a TIFF page."""
         try:
             data = page.asarray()
             if len(data.shape) == 3 and data.shape[2] == 3:
-                img = Image.fromarray(data, mode='RGB')
+                img = Image.fromarray(data, mode="RGB")
             elif len(data.shape) == 2:
-                img = Image.fromarray(data, mode='L')
+                img = Image.fromarray(data, mode="L")
             else:
                 img = Image.fromarray(data)
             self._associated_images[name] = img
@@ -123,82 +127,95 @@ class BifSlide(AbstractSlide):
 
     def _parse_metadata(self):
         """Parse metadata from XMLPacket."""
-        if not self._tiff.pages:
+        if self._tiff is None or not self._tiff.pages:
             return
-        
+
         page0 = self._tiff.pages[0]
-        xml_tag = page0.tags.get(700)  # XMLPacket
+        tags = getattr(page0, "tags", None)
+        xml_tag = tags.get(700) if tags is not None else None  # XMLPacket
         if not xml_tag:
             return
-        
+
         try:
             xml_data = xml_tag.value
             if isinstance(xml_data, bytes):
-                xml_data = xml_data.decode('utf-8', errors='ignore').rstrip('\x00')
-            
+                xml_data = xml_data.decode("utf-8", errors="ignore").rstrip("\x00")
+            elif not isinstance(xml_data, str):
+                xml_data = str(xml_data)
+
             root = ET.fromstring(xml_data)
-            iscan = root.find('.//iScan')
-            
+            iscan = root.find(".//iScan")
+
             if iscan is not None:
-                self._properties['openslide.vendor'] = 'ventana'
-                
+                self._properties["openslide.vendor"] = "ventana"
+
                 # Extract key attributes
-                for attr in ['Magnification', 'ScanRes', 'ScannerModel', 'Mode', 
-                             'Barcode1D', 'Barcode2D', 'UnitNumber']:
+                for attr in [
+                    "Magnification",
+                    "ScanRes",
+                    "ScannerModel",
+                    "Mode",
+                    "Barcode1D",
+                    "Barcode2D",
+                    "UnitNumber",
+                ]:
                     val = iscan.get(attr)
                     if val:
-                        self._properties[f'ventana.{attr}'] = val
-                
+                        self._properties[f"ventana.{attr}"] = val
+
                 # MPP (microns per pixel)
-                scan_res = iscan.get('ScanRes')
+                scan_res = iscan.get("ScanRes")
                 if scan_res:
                     try:
                         mpp = float(scan_res)
-                        self._properties['openslide.mpp-x'] = str(mpp)
-                        self._properties['openslide.mpp-y'] = str(mpp)
+                        self._properties["openslide.mpp-x"] = str(mpp)
+                        self._properties["openslide.mpp-y"] = str(mpp)
                     except ValueError:
                         pass
-                
+
                 # Magnification
-                mag = iscan.get('Magnification')
+                mag = iscan.get("Magnification")
                 if mag:
-                    self._properties['openslide.objective-power'] = mag
+                    self._properties["openslide.objective-power"] = mag
         except Exception:
             pass
-        
+
         # Add level count
-        self._properties['openslide.level-count'] = str(len(self._levels))
+        self._properties["openslide.level-count"] = str(len(self._levels))
 
     def _generate_thumbnail(self):
         """Generate thumbnail from the lowest resolution level."""
         if not self._level_pages:
             return
-        
+
         try:
             # Use the lowest resolution level
             lowest_level_page = self._level_pages[-1]
-            page = self._tiff.pages[lowest_level_page]
+            tiff = self._tiff
+            if tiff is None:
+                return
+            page = tiff.pages[lowest_level_page]
             data = page.asarray()
-            
+
             if len(data.shape) == 3:
-                img = Image.fromarray(data, mode='RGB')
+                img = Image.fromarray(data, mode="RGB")
             else:
                 img = Image.fromarray(data)
-            
+
             # Resize to reasonable thumbnail size
             max_dim = 1024
             if max(img.size) > max_dim:
                 ratio = max_dim / max(img.size)
                 new_size = (int(img.width * ratio), int(img.height * ratio))
                 img = img.resize(new_size, Image.Resampling.LANCZOS)
-            
-            self._associated_images['thumbnail'] = img
+
+            self._associated_images["thumbnail"] = img
         except Exception:
             pass
 
     def _generate_macro(self):
         """Generate macro image from the lowest resolution level if not present."""
-        if 'macro' in self._associated_images:
+        if "macro" in self._associated_images:
             return  # Already have macro
 
         if not self._level_pages:
@@ -207,40 +224,45 @@ class BifSlide(AbstractSlide):
         try:
             # Use the lowest resolution level as macro
             lowest_level_page = self._level_pages[-1]
-            page = self._tiff.pages[lowest_level_page]
+            tiff = self._tiff
+            if tiff is None:
+                return
+            page = tiff.pages[lowest_level_page]
             data = page.asarray()
 
             if len(data.shape) == 3:
-                img = Image.fromarray(data, mode='RGB')
+                img = Image.fromarray(data, mode="RGB")
             else:
                 img = Image.fromarray(data)
 
-            self._associated_images['macro'] = img
+            self._associated_images["macro"] = img
         except Exception:
             pass
 
     def __repr__(self):
-        return f'{self.__class__.__name__}({self._filename!r})'
+        return f"{self.__class__.__name__}({self._filename!r})"
 
     @classmethod
-    def detect_format(cls, filename: str) -> Optional[str]:
-        """Detect if the file is a valid BIF format."""
+    def detect_format(cls, filename) -> Optional[str]:
         try:
-            with open(filename, 'rb') as f:
-                # Check for BigTIFF magic
+            with open(filename, "rb") as f:
                 magic = f.read(4)
-                if magic == b'II+\x00' or magic == b'MM\x00+':
-                    # Could be BigTIFF, check for Ventana metadata
+                if magic == b"II+\x00" or magic == b"MM\x00+":
                     f.seek(0)
-                    tiff = tifffile.TiffFile(f)
+                    if _tifffile is None:
+                        return None
+                    tiff = _tifffile.TiffFile(f)
                     for page in tiff.pages[:5]:
-                        xml_tag = page.tags.get(700)
-                        if xml_tag:
+                        tags = getattr(page, "tags", None)
+                        xml_tag = tags.get(700) if tags is not None else None
+                        if xml_tag is not None:
                             xml_data = xml_tag.value
                             if isinstance(xml_data, bytes):
-                                xml_data = xml_data.decode('utf-8', errors='ignore')
-                            if 'iScan' in xml_data or 'Ventana' in xml_data.upper():
-                                return 'ventana-bif'
+                                xml_data = xml_data.decode("utf-8", errors="ignore")
+                            elif not isinstance(xml_data, str):
+                                xml_data = str(xml_data)
+                            if "iScan" in xml_data or "Ventana" in xml_data.upper():
+                                return "ventana-bif"
             return None
         except Exception:
             return None
@@ -251,12 +273,6 @@ class BifSlide(AbstractSlide):
             self._tiff.close()
             self._tiff = None
         self._associated_images.clear()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        self.close()
 
     def __del__(self):
         self.close()
@@ -274,27 +290,15 @@ class BifSlide(AbstractSlide):
         return len(self._levels)
 
     @property
-    def mpp(self) -> Optional[float]:
-        """Microns per pixel."""
-        try:
-            # Check properties first
-            props = self.properties
-            if 'openslide.mpp-x' in props:
-                return float(props['openslide.mpp-x'])
-        except:
-            pass
-        return None
-
-    @property
     def magnification(self) -> Optional[float]:
         """Get slide magnification."""
         try:
             # Check properties
             props = self.properties
-            mag = props.get('openslide.objective-power')
+            mag = props.get("openslide.objective-power")
             if mag:
                 return float(mag)
-            
+
             # Fallback to MPP calculation
             mpp = self.mpp
             if mpp and mpp > 0:
@@ -329,7 +333,7 @@ class BifSlide(AbstractSlide):
     @property
     def mpp(self) -> Optional[float]:
         """Microns per pixel."""
-        mpp_str = self._properties.get('openslide.mpp-x')
+        mpp_str = self._properties.get("openslide.mpp-x")
         if mpp_str:
             try:
                 return float(mpp_str)
@@ -345,7 +349,9 @@ class BifSlide(AbstractSlide):
                 return max(0, i - 1) if i > 0 else 0
         return len(downsamples) - 1
 
-    def read_region(self, location: Tuple[int, int], level: int, size: Tuple[int, int]) -> Image.Image:
+    def read_region(
+        self, location: Tuple[int, int], level: int, size: Tuple[int, int]
+    ) -> Image.Image:
         """Read a region from the slide.
 
         Args:
@@ -358,9 +364,12 @@ class BifSlide(AbstractSlide):
         """
         if level < 0 or level >= len(self._level_pages):
             # Return blank image for invalid level
-            return Image.new('RGBA', size, (255, 255, 255, 255))
+            return Image.new("RGBA", size, (255, 255, 255, 255))
 
         page_idx = self._level_pages[level]
+        if self._tiff is None:
+            return Image.new("RGBA", size, (255, 255, 255, 255))
+
         page = self._tiff.pages[page_idx]
 
         downsample = self.level_downsamples[level]
@@ -384,7 +393,7 @@ class BifSlide(AbstractSlide):
         actual_height = y_end - y
 
         if actual_width <= 0 or actual_height <= 0:
-            return Image.new('RGBA', size, (255, 255, 255, 255))
+            return Image.new("RGBA", size, (255, 255, 255, 255))
 
         try:
             # Read region using tifffile
@@ -393,19 +402,19 @@ class BifSlide(AbstractSlide):
 
             # Convert to PIL Image
             if len(region_data.shape) == 3 and region_data.shape[2] == 3:
-                img = Image.fromarray(region_data, mode='RGB')
+                img = Image.fromarray(region_data, mode="RGB")
             elif len(region_data.shape) == 2:
-                img = Image.fromarray(region_data, mode='L').convert('RGB')
+                img = Image.fromarray(region_data, mode="L").convert("RGB")
             else:
                 img = Image.fromarray(region_data)
 
             # Convert to RGBA
-            if img.mode != 'RGBA':
-                img = img.convert('RGBA')
+            if img.mode != "RGBA":
+                img = img.convert("RGBA")
 
             # If we read a smaller region than requested, paste into full-size image
             if img.size != size:
-                result = Image.new('RGBA', size, (255, 255, 255, 255))
+                result = Image.new("RGBA", size, (255, 255, 255, 255))
                 result.paste(img, (0, 0))
                 return result
 
@@ -413,14 +422,13 @@ class BifSlide(AbstractSlide):
 
         except Exception as e:
             # Return blank image on error
-            return Image.new('RGBA', size, (255, 255, 255, 255))
+            return Image.new("RGBA", size, (255, 255, 255, 255))
 
-    def get_thumbnail(self, size: Tuple[int, int] = (256, 256)) -> Optional[Image.Image]:
+    def get_thumbnail(self, size: Tuple[int, int] = (256, 256)) -> Image.Image:
         """Get a thumbnail image."""
-        thumb = self._associated_images.get('thumbnail')
+        thumb = self._associated_images.get("thumbnail")
         if thumb is not None:
             thumb = thumb.copy()
             thumb.thumbnail(size, Image.Resampling.LANCZOS)
             return thumb
-        return None
-
+        return Image.new("RGB", size, (255, 255, 255))

@@ -25,12 +25,15 @@ class _ImageType:
     EXTERN = 5
     WHOLE = 6
     RESERVED = 7
-    MACRO_LABEL = 8  # TMAP06: combined macro+label image (label=left 1/3, macro=right 2/3)
+    MACRO_LABEL = (
+        8  # TMAP06: combined macro+label image (label=left 1/3, macro=right 2/3)
+    )
 
 
 @dataclass
 class _TileInfo:
     """Information about a single tile"""
+
     offset: int
     length: int
     layer_no: int = 0
@@ -41,6 +44,7 @@ class _TileInfo:
 @dataclass
 class _LayerInfoV6:
     """TMAP06 LayerInfo structure"""
+
     file_id: int = 0
     layer: int = 0
     top_dx: int = 0
@@ -57,6 +61,7 @@ class _LayerInfoV6:
 @dataclass
 class _LayerInfoV7:
     """TMAP07 LayerInfo structure"""
+
     layer_id: int = 0
     scale: float = 1.0
     width: int = 0
@@ -70,6 +75,7 @@ class _LayerInfoV7:
 @dataclass
 class _ImageInfo:
     """Associated image info"""
+
     width: int = 0
     height: int = 0
     depth: int = 0
@@ -81,6 +87,7 @@ class _ImageInfo:
 @dataclass
 class _ShrinkTileInfo:
     """TMAP06 ShrinkTileInfo for low-resolution tiles"""
+
     file_id: int = 0
     layer_no: int = 0
     n_x: int = 0
@@ -92,6 +99,7 @@ class _ShrinkTileInfo:
 @dataclass
 class _TmapHeader:
     """TMAP file header information"""
+
     version: int
     focus_nums: int = 1
     scan_scale: int = 40
@@ -125,7 +133,9 @@ class TmapSlide(AbstractSlide):
         AbstractSlide.__init__(self)
         self._filename = filename
         self._file: Optional[BinaryIO] = None
-        self._data_files: Dict[int, BinaryIO] = {}  # file_id -> file handle for multi-file support
+        self._data_files: Dict[
+            int, BinaryIO
+        ] = {}  # file_id -> file handle for multi-file support
         self._header = _TmapHeader(version=0)
         self._layer_infos_v6: List[_LayerInfoV6] = []
         self._layer_infos_v7: List[_LayerInfoV7] = []
@@ -139,42 +149,50 @@ class TmapSlide(AbstractSlide):
         """Open and parse the TMAP file."""
         if not os.path.exists(self._filename):
             raise FileNotFoundError(f"TMAP file not found: {self._filename}")
-        self._file = open(self._filename, 'rb')
-        magic = self._file.read(6).decode('ascii', errors='ignore')
-        if magic == 'TMAP07':
+        self._file = open(self._filename, "rb")
+        magic = self._require_file().read(6).decode("ascii", errors="ignore")
+        if magic == "TMAP07":
             self._header.version = 7
             self._parse_tmap07()
-        elif magic == 'TMAP06':
+        elif magic == "TMAP06":
             self._header.version = 6
             self._parse_tmap06()
         else:
-            self._file.close()
+            self._require_file().close()
+            self._file = None
             raise ValueError(f"Unsupported TMAP format: {magic}")
 
+    def _require_file(self) -> BinaryIO:
+        if self._file is None:
+            raise RuntimeError("TMAP file is not open")
+        return self._file
+
     def _read_byte(self) -> int:
-        return struct.unpack('B', self._file.read(1))[0]
+        return struct.unpack("B", self._require_file().read(1))[0]
 
     def _read_short(self) -> int:
-        return struct.unpack('<h', self._file.read(2))[0]
+        return struct.unpack("<h", self._require_file().read(2))[0]
 
     def _read_int(self) -> int:
-        return struct.unpack('<i', self._file.read(4))[0]
+        return struct.unpack("<i", self._require_file().read(4))[0]
 
     def _read_long(self) -> int:
-        return struct.unpack('<q', self._file.read(8))[0]
+        return struct.unpack("<q", self._require_file().read(8))[0]
 
     def _read_float(self) -> float:
-        return struct.unpack('<f', self._file.read(4))[0]
+        return struct.unpack("<f", self._require_file().read(4))[0]
 
     # ========== TMAP06 Parsing ==========
 
     def _parse_tmap06(self):
         """Parse TMAP06 format."""
-        f = self._file
+        f = self._require_file()
         f.seek(6)
         self._header.focus_nums = self._read_byte()
         self._header.image_format = self._read_byte()
-        self._header.file_num = self._read_byte()  # Number of data files (0 or 1 = single file)
+        self._header.file_num = (
+            self._read_byte()
+        )  # Number of data files (0 or 1 = single file)
         self._header.layer_num = self._read_byte()
         img_color = self._read_byte()
         if img_color == 0:
@@ -233,9 +251,13 @@ class TmapSlide(AbstractSlide):
         ext_types = [self._read_int() for _ in range(8)]
         ext_offsets = [self._read_int() for _ in range(8)]
         ext_lengths = [self._read_int() for _ in range(8)]
-        self._file.read(24)  # reserved
+        self._require_file().read(24)  # reserved
         for i in range(8):
-            if ext_types[i] in ext_to_img_type and ext_offsets[i] > 0 and ext_lengths[i] > 0:
+            if (
+                ext_types[i] in ext_to_img_type
+                and ext_offsets[i] > 0
+                and ext_lengths[i] > 0
+            ):
                 info = _ImageInfo()
                 info.image_type = ext_to_img_type[ext_types[i]]
                 info.offset = ext_offsets[i]
@@ -248,7 +270,7 @@ class TmapSlide(AbstractSlide):
             layer = _LayerInfoV6()
             layer.file_id = self._read_byte()
             layer.layer = self._read_byte()
-            self._file.read(2)
+            self._require_file().read(2)
             layer.top_dx = self._read_byte()
             layer.top_dy = self._read_byte()
             layer.left_dx = self._read_byte()
@@ -262,7 +284,7 @@ class TmapSlide(AbstractSlide):
                 tile.layer_no = self._read_byte()
                 tile.col = self._read_byte()
                 tile.row = self._read_byte()
-                self._file.read(1)
+                self._require_file().read(1)
                 tile.offset = self._read_int()
                 tile.length = self._read_int()
                 layer.tiles.append(tile)
@@ -274,7 +296,7 @@ class TmapSlide(AbstractSlide):
             info = _ShrinkTileInfo()
             info.file_id = self._read_byte()
             info.layer_no = self._read_byte()
-            self._file.read(2)
+            self._require_file().read(2)
             info.n_x = self._read_int()
             info.n_y = self._read_int()
             info.offset = self._read_int()
@@ -318,11 +340,11 @@ class TmapSlide(AbstractSlide):
             return  # Single file mode
 
         # Open auxiliary files
-        base_path = self._filename.rsplit('.', 1)[0]
+        base_path = self._filename.rsplit(".", 1)[0]
         for file_id in range(1, max_file_id + 1):
             dt_path = f"{base_path}.DT{file_id}"
             if os.path.exists(dt_path):
-                self._data_files[file_id] = open(dt_path, 'rb')
+                self._data_files[file_id] = open(dt_path, "rb")
 
     def _get_file_handle(self, file_id: int) -> Optional[BinaryIO]:
         """Get file handle for the given file_id.
@@ -344,7 +366,7 @@ class TmapSlide(AbstractSlide):
         - ImageInfo (8 * 32): 304 to 560
         - LayerInfo (16 * 32): 560 to 1072
         """
-        f = self._file
+        f = self._require_file()
         f.seek(8)
         self._header.image_format = self._read_byte()
         self._header.jpeg_quality = self._read_byte()
@@ -393,14 +415,28 @@ class TmapSlide(AbstractSlide):
             length = self._read_int()
             self._read_int()  # padding
             if width > 0 and height > 0:
-                assoc_images_raw.append({
-                    'width': width, 'height': height, 'depth': depth,
-                    'image_type': img_type, 'offset': offset, 'length': length,
-                })
+                assoc_images_raw.append(
+                    {
+                        "width": width,
+                        "height": height,
+                        "depth": depth,
+                        "image_type": img_type,
+                        "offset": offset,
+                        "length": length,
+                    }
+                )
         for img in assoc_images_raw:
             info = _ImageInfo()
-            info.width, info.height, info.depth = img['width'], img['height'], img['depth']
-            info.image_type, info.offset, info.length = img['image_type'], img['offset'], img['length']
+            info.width, info.height, info.depth = (
+                img["width"],
+                img["height"],
+                img["depth"],
+            )
+            info.image_type, info.offset, info.length = (
+                img["image_type"],
+                img["offset"],
+                img["length"],
+            )
             self._image_infos.append(info)
 
     def _parse_tmap07_layer_infos(self):
@@ -450,16 +486,16 @@ class TmapSlide(AbstractSlide):
     # ========== Public API ==========
 
     def __repr__(self):
-        return '%s(%r)' % (self.__class__.__name__, self._filename)
+        return "%s(%r)" % (self.__class__.__name__, self._filename)
 
     @classmethod
     def detect_format(cls, filename):
         """Detect if the file is a valid TMAP format."""
         try:
-            with open(filename, 'rb') as f:
-                magic = f.read(6).decode('ascii', errors='ignore')
-                if magic in ('TMAP06', 'TMAP07'):
-                    return 'tmap'
+            with open(filename, "rb") as f:
+                magic = f.read(6).decode("ascii", errors="ignore")
+                if magic in ("TMAP06", "TMAP07"):
+                    return "tmap"
             return None
         except Exception:
             return None
@@ -475,12 +511,6 @@ class TmapSlide(AbstractSlide):
             except Exception:
                 pass
         self._data_files.clear()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        self.close()
 
     def __del__(self):
         self.close()
@@ -509,20 +539,20 @@ class TmapSlide(AbstractSlide):
         return tuple(base_width / w if w > 0 else 1.0 for w, _ in self._levels)
 
     @property
-    def properties(self) -> dict:
+    def properties(self) -> Dict[str, str]:
         """Get slide properties as a dictionary."""
         mpp = self._header.pixel_size * 1000
         return {
-            'openslide.vendor': 'UNIC',
-            'tmap.version': str(self._header.version),
-            'tmap.scan_scale': str(self._header.scan_scale),
-            'tmap.pixel_size': str(self._header.pixel_size),
-            'tmap.width': str(self._header.width),
-            'tmap.height': str(self._header.height),
-            'openslide.mpp-x': str(mpp),
-            'openslide.mpp-y': str(mpp),
-            'openslide.objective-power': str(self._header.scan_scale),
-            'openslide.level-count': str(self.level_count),
+            "openslide.vendor": "UNIC",
+            "tmap.version": str(self._header.version),
+            "tmap.scan_scale": str(self._header.scan_scale),
+            "tmap.pixel_size": str(self._header.pixel_size),
+            "tmap.width": str(self._header.width),
+            "tmap.height": str(self._header.height),
+            "openslide.mpp-x": str(mpp),
+            "openslide.mpp-y": str(mpp),
+            "openslide.objective-power": str(self._header.scan_scale),
+            "openslide.level-count": str(self.level_count),
         }
 
     @property
@@ -533,9 +563,12 @@ class TmapSlide(AbstractSlide):
     def _get_image_info_by_name(self, name: str) -> Optional[_ImageInfo]:
         """Get _ImageInfo by name."""
         type_map = {
-            'thumbnail': _ImageType.THUMBNAIL, 'navigate': _ImageType.NAVIGATE,
-            'macro': _ImageType.MACRO, 'label': _ImageType.LABEL,
-            'preview': _ImageType.PREVIEW, 'extern': _ImageType.EXTERN,
+            "thumbnail": _ImageType.THUMBNAIL,
+            "navigate": _ImageType.NAVIGATE,
+            "macro": _ImageType.MACRO,
+            "label": _ImageType.LABEL,
+            "preview": _ImageType.PREVIEW,
+            "extern": _ImageType.EXTERN,
         }
         if name not in type_map:
             return None
@@ -551,12 +584,12 @@ class TmapSlide(AbstractSlide):
         return None
 
     @property
-    def associated_images(self) -> dict:
+    def associated_images(self) -> Dict[str, Image.Image]:
         """Get associated images as a dict-like object.
 
         Returns a dictionary where keys are image names and values are PIL Images.
         """
-        result = {}
+        result: Dict[str, Image.Image] = {}
         for name in self.associated_image_names:
             img = self.get_associated_image(name)
             if img is not None:
@@ -564,21 +597,24 @@ class TmapSlide(AbstractSlide):
         return result
 
     @property
-    def associated_image_names(self) -> list:
+    def associated_image_names(self) -> List[str]:
         """Get list of available associated image names."""
         type_names = {
-            _ImageType.THUMBNAIL: 'thumbnail', _ImageType.NAVIGATE: 'navigate',
-            _ImageType.MACRO: 'macro', _ImageType.LABEL: 'label',
-            _ImageType.PREVIEW: 'preview', _ImageType.EXTERN: 'extern',
+            _ImageType.THUMBNAIL: "thumbnail",
+            _ImageType.NAVIGATE: "navigate",
+            _ImageType.MACRO: "macro",
+            _ImageType.LABEL: "label",
+            _ImageType.PREVIEW: "preview",
+            _ImageType.EXTERN: "extern",
         }
-        result = []
+        result: List[str] = []
         for info in self._image_infos:
             if info.image_type in type_names and info.offset > 0:
                 result.append(type_names[info.image_type])
             # MACRO_LABEL provides both 'label' and 'macro'
             elif info.image_type == _ImageType.MACRO_LABEL and info.offset > 0:
-                result.append('label')
-                result.append('macro')
+                result.append("label")
+                result.append("macro")
         return result
 
     def get_best_level_for_downsample(self, downsample: float) -> int:
@@ -594,18 +630,19 @@ class TmapSlide(AbstractSlide):
         info = self._get_image_info_by_name(name)
         if info is None or info.offset <= 0 or info.length <= 0:
             return None
-        self._file.seek(info.offset)
-        data = self._file.read(info.length)
+        file_handle = self._require_file()
+        file_handle.seek(info.offset)
+        data = file_handle.read(info.length)
 
         # Find JPEG data
         img = None
-        if data[:2] == b'\xff\xd8':
+        if data[:2] == b"\xff\xd8":
             try:
                 img = Image.open(io.BytesIO(data))
             except Exception:
                 pass
         if img is None:
-            jpeg_start = data.find(b'\xff\xd8\xff')
+            jpeg_start = data.find(b"\xff\xd8\xff")
             if jpeg_start >= 0:
                 try:
                     img = Image.open(io.BytesIO(data[jpeg_start:]))
@@ -620,34 +657,33 @@ class TmapSlide(AbstractSlide):
         if info.image_type == _ImageType.MACRO_LABEL:
             w, h = img.size
             label_w = w // 3
-            if name == 'label':
+            if name == "label":
                 img = img.crop((0, 0, label_w, h))
-            elif name == 'macro':
+            elif name == "macro":
                 img = img.crop((label_w, 0, w, h))
             # else: return full MACRO_LABEL image
 
         return img
 
-    def get_thumbnail(self, size: Tuple[int, int] = None) -> Optional[Image.Image]:
+    def get_thumbnail(self, size: Optional[Tuple[int, int]] = None) -> Image.Image:
         """Get a thumbnail image."""
-        thumb = self.get_associated_image('thumbnail')
-        if thumb is not None:
-            if size is not None:
-                thumb.thumbnail(size, Image.Resampling.LANCZOS)
-            return thumb
+        thumb = self.get_associated_image("thumbnail")
         if size is None:
             size = (256, 256)
+        if thumb is not None:
+            thumb.thumbnail(size, Image.Resampling.LANCZOS)
+            return thumb
         if self._levels:
             lowest_level = len(self._levels) - 1
             level_dims = self._levels[lowest_level]
             region = self.read_region((0, 0), lowest_level, level_dims)
             region.thumbnail(size, Image.Resampling.LANCZOS)
             return region
-        return None
+        return self._get_blank_tile(*size)
 
     def _get_blank_tile(self, width: int = 256, height: int = 256) -> Image.Image:
         """Return a blank tile with background color."""
-        return Image.new('RGB', (width, height), color=(self._header.bkg_color,) * 3)
+        return Image.new("RGB", (width, height), color=(self._header.bkg_color,) * 3)
 
     def _decode_tile(self, tile_data: bytes) -> Optional[Image.Image]:
         """Decode compressed tile data to PIL Image."""
@@ -658,7 +694,9 @@ class TmapSlide(AbstractSlide):
         except Exception:
             return None
 
-    def get_tile_v7(self, layer_idx: int, col: int, row: int, focus_layer: int = 0) -> Optional[Image.Image]:
+    def get_tile_v7(
+        self, layer_idx: int, col: int, row: int, focus_layer: int = 0
+    ) -> Optional[Image.Image]:
         """Get a tile for TMAP07.
 
         Based on decompiled SDK:
@@ -666,33 +704,42 @@ class TmapSlide(AbstractSlide):
         - Each tile entry is 40 bytes
         - Tile structure: nLayerID(4), nFocusID(4), nX(4), nY(4), nWidth(4), nHeight(4), lOffset(8), nLength(4), padding(4)
         """
-        if self._header.version != 7 or layer_idx < 0 or layer_idx >= len(self._layer_infos_v7):
+        if (
+            self._header.version != 7
+            or layer_idx < 0
+            or layer_idx >= len(self._layer_infos_v7)
+        ):
             return None
         layer = self._layer_infos_v7[layer_idx]
         if col < 0 or col >= layer.tile_col or row < 0 or row >= layer.tile_row:
             return None
 
         # Calculate focus offset for multi-focus support
-        focus_num = focus_layer if focus_layer >= 0 else self._header.focus_nums + focus_layer
+        focus_num = (
+            focus_layer if focus_layer >= 0 else self._header.focus_nums + focus_layer
+        )
         focus_offset = focus_num * layer.tile_col * layer.tile_row * 40
 
         # Tile table position: layer.offset + (row * tile_col + col) * 40 + focus_offset
-        tile_table_offset = layer.offset + (row * layer.tile_col + col) * 40 + focus_offset
+        tile_table_offset = (
+            layer.offset + (row * layer.tile_col + col) * 40 + focus_offset
+        )
 
-        self._file.seek(tile_table_offset)
+        file_handle = self._require_file()
+        file_handle.seek(tile_table_offset)
         # Read tile info (40 bytes)
         # Skip: nLayerID(4), nFocusID(4), nX(4), nY(4), nWidth(4), nHeight(4)
-        self._file.read(24)  # Skip first 24 bytes
+        file_handle.read(24)  # Skip first 24 bytes
         offset = self._read_long()  # lOffset: 8 bytes
-        length = self._read_int()   # nLength: 4 bytes
+        length = self._read_int()  # nLength: 4 bytes
         # Remaining 4 bytes are padding
 
         if offset > 0 and length > 0:
-            self._file.seek(offset)
-            return self._decode_tile(self._file.read(length))
+            file_handle.seek(offset)
+            return self._decode_tile(file_handle.read(length))
         return None
 
-    def _get_tmap06_layer_params(self, level: int) -> tuple:
+    def _get_tmap06_layer_params(self, level: int) -> Tuple[int, int, int, int]:
         """Get layer parameters for TMAP06.
 
         Returns:
@@ -727,14 +774,18 @@ class TmapSlide(AbstractSlide):
         else:
             return (0, 0, 16, 1)
 
-    def _get_tile_from_layer_info(self, layer_info: _LayerInfoV6, tile_layer: int,
-                                   tile_col: int, tile_row: int) -> Optional[Image.Image]:
+    def _get_tile_from_layer_info(
+        self, layer_info: _LayerInfoV6, tile_layer: int, tile_col: int, tile_row: int
+    ) -> Optional[Image.Image]:
         """Get a specific tile from LayerInfo."""
         for tile in layer_info.tiles:
-            if (tile.layer_no == tile_layer and
-                tile.col == tile_col and
-                tile.row == tile_row and
-                tile.offset > 0 and tile.length > 0):
+            if (
+                tile.layer_no == tile_layer
+                and tile.col == tile_col
+                and tile.row == tile_row
+                and tile.offset > 0
+                and tile.length > 0
+            ):
                 fh = self._get_file_handle(layer_info.file_id)
                 if fh is None:
                     return None
@@ -750,7 +801,7 @@ class TmapSlide(AbstractSlide):
 
         # Calculate step size for this layer
         ratio_step = self._header.ratio_step
-        scale = ratio_step ** layer_no
+        scale = ratio_step**layer_no
         step_x = tile_w * scale * 4  # Each shrink tile covers 4x4 area at its scale
         step_y = tile_h * scale * 4
 
@@ -769,7 +820,9 @@ class TmapSlide(AbstractSlide):
                 return self._decode_tile(fh.read(st.length))
         return None
 
-    def get_tile_v6(self, layer_idx: int, n_x: int, n_y: int, col: int, row: int) -> Optional[Image.Image]:
+    def get_tile_v6(
+        self, layer_idx: int, n_x: int, n_y: int, col: int, row: int
+    ) -> Optional[Image.Image]:
         """Get a tile for TMAP06.
 
         This is the legacy API, kept for compatibility.
@@ -782,7 +835,7 @@ class TmapSlide(AbstractSlide):
             return self._get_tile_from_layer_info(layer, layer_idx, col, row)
         return None
 
-    def apply_color_correction(self, apply: bool, style: str = 'Real'):
+    def apply_color_correction(self, apply: bool, style: str = "Real"):
         """Enable or disable color correction.
 
         Args:
@@ -793,7 +846,7 @@ class TmapSlide(AbstractSlide):
             self._color_correction.set_style(style)
         self._color_correction.enabled = apply
 
-    def get_color_correction_info(self) -> dict:
+    def get_color_correction_info(self) -> Dict[str, object]:
         """Get color correction parameters info.
 
         Returns:
@@ -801,7 +854,9 @@ class TmapSlide(AbstractSlide):
         """
         return self._color_correction.get_info()
 
-    def read_region(self, location: Tuple[int, int], level: int, size: Tuple[int, int]) -> Image.Image:
+    def read_region(
+        self, location: Tuple[int, int], level: int, size: Tuple[int, int]
+    ) -> Image.Image:
         """Read a region from the slide."""
         if self._header.version == 7:
             img = self._read_region_v7(location, level, size)
@@ -812,16 +867,22 @@ class TmapSlide(AbstractSlide):
         if self._color_correction.enabled:
             img = self._color_correction.apply(img)
 
-        if img.mode != 'RGBA':
-            img = img.convert('RGBA')
+        if img.mode != "RGBA":
+            img = img.convert("RGBA")
         return img
 
-    def _read_region_v7(self, location: Tuple[int, int], level: int, size: Tuple[int, int]) -> Image.Image:
+    def _read_region_v7(
+        self, location: Tuple[int, int], level: int, size: Tuple[int, int]
+    ) -> Image.Image:
         """Read region for TMAP07."""
         if level < 0 or level >= len(self._layer_infos_v7):
             return self._get_blank_tile(size[0], size[1])
         layer = self._layer_infos_v7[level]
-        downsample = self.level_downsamples[level] if level < len(self.level_downsamples) else 1.0
+        downsample = (
+            self.level_downsamples[level]
+            if level < len(self.level_downsamples)
+            else 1.0
+        )
         x, y = int(location[0] / downsample), int(location[1] / downsample)
         width, height = size
         tile_size = self.TILE_SIZE
@@ -830,17 +891,24 @@ class TmapSlide(AbstractSlide):
         result = self._get_blank_tile(width, height)
         for row in range(start_row, end_row):
             for col in range(start_col, end_col):
-                tile = self.get_tile_v7(level, col, row) or self._get_blank_tile(tile_size, tile_size)
+                tile = self.get_tile_v7(level, col, row) or self._get_blank_tile(
+                    tile_size, tile_size
+                )
                 tile_x, tile_y = col * tile_size - x, row * tile_size - y
                 src_x, src_y = max(0, -tile_x), max(0, -tile_y)
                 dst_x, dst_y = max(0, tile_x), max(0, tile_y)
                 paste_w = min(tile_size - src_x, width - dst_x)
                 paste_h = min(tile_size - src_y, height - dst_y)
                 if paste_w > 0 and paste_h > 0:
-                    result.paste(tile.crop((src_x, src_y, src_x + paste_w, src_y + paste_h)), (dst_x, dst_y))
+                    result.paste(
+                        tile.crop((src_x, src_y, src_x + paste_w, src_y + paste_h)),
+                        (dst_x, dst_y),
+                    )
         return result
 
-    def _read_region_v6(self, location: Tuple[int, int], level: int, size: Tuple[int, int]) -> Image.Image:
+    def _read_region_v6(
+        self, location: Tuple[int, int], level: int, size: Tuple[int, int]
+    ) -> Image.Image:
         """Read region for TMAP06.
 
         TMAP06 uses a complex tiling system:
@@ -852,7 +920,11 @@ class TmapSlide(AbstractSlide):
         if level < 0 or level >= len(self._levels):
             return self._get_blank_tile(size[0], size[1])
 
-        downsample = self.level_downsamples[level] if level < len(self.level_downsamples) else 1.0
+        downsample = (
+            self.level_downsamples[level]
+            if level < len(self.level_downsamples)
+            else 1.0
+        )
         # location is in level 0 coordinates, convert to target level
         x = int(location[0] / downsample)
         y = int(location[1] / downsample)
@@ -861,7 +933,9 @@ class TmapSlide(AbstractSlide):
         result = self._get_blank_tile(width, height)
 
         # Get tile parameters for this level
-        tile_layer, tile_start, tile_end, scale_factor = self._get_tmap06_layer_params(level)
+        tile_layer, tile_start, tile_end, scale_factor = self._get_tmap06_layer_params(
+            level
+        )
 
         tile_w = self._header.tile_width or 512
         tile_h = self._header.tile_height or 512
@@ -873,7 +947,9 @@ class TmapSlide(AbstractSlide):
 
         # For high zoom levels, use ShrinkTileInfo
         if tile_end == 0 and self._shrink_tile_infos:
-            return self._read_region_v6_shrink(location, level, size, x, y, width, height)
+            return self._read_region_v6_shrink(
+                location, level, size, x, y, width, height
+            )
 
         # For tile_layer > 0, each tile covers the entire image block (img_w x img_h)
         # but the tile itself is tile_w x tile_h pixels
@@ -912,8 +988,12 @@ class TmapSlide(AbstractSlide):
                 block_y0 = layer_info.n_y
 
                 # Check if this block overlaps with our region (in level 0 coords)
-                if (block_x0 + img_w < x0 or block_x0 > x0 + w0 or
-                    block_y0 + img_h < y0 or block_y0 > y0 + h0):
+                if (
+                    block_x0 + img_w < x0
+                    or block_x0 > x0 + w0
+                    or block_y0 + img_h < y0
+                    or block_y0 > y0 + h0
+                ):
                     continue
 
                 for tile in layer_info.tiles:
@@ -927,8 +1007,12 @@ class TmapSlide(AbstractSlide):
                     tile_y0_l0 = block_y0 + tile.row * scaled_tile_h
 
                     # Check if this tile overlaps with our region
-                    if (tile_x0_l0 + scaled_tile_w < x0 or tile_x0_l0 > x0 + w0 or
-                        tile_y0_l0 + scaled_tile_h < y0 or tile_y0_l0 > y0 + h0):
+                    if (
+                        tile_x0_l0 + scaled_tile_w < x0
+                        or tile_x0_l0 > x0 + w0
+                        or tile_y0_l0 + scaled_tile_h < y0
+                        or tile_y0_l0 > y0 + h0
+                    ):
                         continue
 
                     # Read tile from appropriate file
@@ -987,16 +1071,27 @@ class TmapSlide(AbstractSlide):
                         dst_h = int((overlap_y1 - overlap_y0) / downsample)
 
                         if src_w > 0 and src_h > 0 and dst_w > 0 and dst_h > 0:
-                            cropped = tile_img.crop((src_x, src_y, src_x + src_w, src_y + src_h))
+                            cropped = tile_img.crop(
+                                (src_x, src_y, src_x + src_w, src_y + src_h)
+                            )
                             if cropped.size != (dst_w, dst_h):
-                                cropped = cropped.resize((dst_w, dst_h), Image.Resampling.BILINEAR)
+                                cropped = cropped.resize(
+                                    (dst_w, dst_h), Image.Resampling.BILINEAR
+                                )
                             result.paste(cropped, (dst_x, dst_y))
 
         return result
 
-    def _read_region_v6_shrink(self, location: Tuple[int, int], level: int,
-                                size: Tuple[int, int], x: int, y: int,
-                                width: int, height: int) -> Image.Image:
+    def _read_region_v6_shrink(
+        self,
+        location: Tuple[int, int],
+        level: int,
+        size: Tuple[int, int],
+        x: int,
+        y: int,
+        width: int,
+        height: int,
+    ) -> Image.Image:
         """Read region using ShrinkTileInfo for low resolution levels.
 
         ShrinkTileInfo stores pre-rendered tiles for low resolution levels.
@@ -1004,7 +1099,11 @@ class TmapSlide(AbstractSlide):
         The n_x, n_y fields are the top-left corner in level 0 coordinates.
         """
         result = self._get_blank_tile(width, height)
-        downsample = self.level_downsamples[level] if level < len(self.level_downsamples) else 1.0
+        downsample = (
+            self.level_downsamples[level]
+            if level < len(self.level_downsamples)
+            else 1.0
+        )
 
         tile_w = self._header.tile_width or 512
         tile_h = self._header.tile_height or 512
@@ -1028,7 +1127,7 @@ class TmapSlide(AbstractSlide):
 
             # Calculate the area this shrink tile covers in level 0 coordinates
             # scale = ratio_step ^ layer_no
-            scale = ratio_step ** st.layer_no
+            scale = ratio_step**st.layer_no
             st_w = tile_w * scale  # Tile covers tile_w * scale pixels in level 0
             st_h = tile_h * scale
 
@@ -1036,8 +1135,12 @@ class TmapSlide(AbstractSlide):
             st_y0 = st.n_y
 
             # Check overlap with requested region
-            if (st_x0 + st_w <= x0 or st_x0 >= x0 + w0 or
-                st_y0 + st_h <= y0 or st_y0 >= y0 + h0):
+            if (
+                st_x0 + st_w <= x0
+                or st_x0 >= x0 + w0
+                or st_y0 + st_h <= y0
+                or st_y0 >= y0 + h0
+            ):
                 continue
 
             if st.offset <= 0 or st.length <= 0:

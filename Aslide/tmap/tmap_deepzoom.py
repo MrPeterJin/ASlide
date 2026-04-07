@@ -130,7 +130,7 @@ class DeepZoomGenerator(object):
             try:
                 tile.thumbnail(z_size, Image.Resampling.LANCZOS)
             except AttributeError:
-                tile.thumbnail(z_size, Image.LANCZOS)
+                tile.thumbnail(z_size, Image.Resampling.LANCZOS)
 
         return tile
 

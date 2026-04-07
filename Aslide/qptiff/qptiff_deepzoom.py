@@ -201,7 +201,7 @@ class QptiffDeepZoomGenerator:
             
             # Resize to exact tile dimensions if needed
             if tile_image.size != (tile_width, tile_height):
-                tile_image = tile_image.resize((tile_width, tile_height), Image.LANCZOS)
+                tile_image = tile_image.resize((tile_width, tile_height), Image.Resampling.LANCZOS)
             
             # Pad to full tile size if necessary
             if tile_width < self._tile_size + 2 * self._overlap or tile_height < self._tile_size + 2 * self._overlap:

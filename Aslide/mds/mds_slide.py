@@ -9,11 +9,14 @@ from PIL import Image
 import xml.etree.ElementTree as ET
 from io import BytesIO
 from collections import defaultdict
+from typing import Any
 
 try:
     import olefile
 except ImportError:
-    raise ImportError("olefile is required for MDS support. Install with: pip install olefile")
+    raise ImportError(
+        "olefile is required for MDS support. Install with: pip install olefile"
+    )
 
 from .color_correction import ColorCorrection
 
@@ -28,12 +31,12 @@ def detect_mds_format(filename):
         None if not a valid MDS file
     """
     try:
-        with open(filename, 'rb') as f:
+        with open(filename, "rb") as f:
             magic = f.read(4)
-            if magic == b'BKIO':
-                return 'bkio'
-            elif magic == b'\xd0\xcf\x11\xe0':  # OLE2 magic
-                return 'ole2'
+            if magic == b"BKIO":
+                return "bkio"
+            elif magic == b"\xd0\xcf\x11\xe0":  # OLE2 magic
+                return "ole2"
     except:
         pass
     return None
@@ -50,11 +53,12 @@ class MdsSlide:
         """Factory method to create appropriate slide reader"""
         format_type = detect_mds_format(filename)
 
-        if format_type == 'ole2':
+        if format_type == "ole2":
             return MdsSlideOLE2(filename, silent)
-        elif format_type == 'bkio':
+        elif format_type == "bkio":
             # Import here to avoid circular dependency
             from .mdsx_slide import MdsxSlide
+
             return MdsxSlide(filename, silent)
         else:
             raise ValueError(f"Unsupported MDS format: {filename}")
@@ -63,7 +67,7 @@ class MdsSlide:
     def detect_format(cls, filename):
         """Detect if file is MDS/MDSX format"""
         ext = os.path.splitext(filename)[1].lower()
-        return "mds" if ext in ['.mds', '.mdsx'] else None
+        return "mds" if ext in [".mds", ".mdsx"] else None
 
 
 class MdsSlideOLE2:
@@ -78,12 +82,16 @@ class MdsSlideOLE2:
         """
         self.__filename = filename
         self._silent = silent
+        self.ole: Any | None = None
+        self._dimensions: tuple[int, int] | None = None
+        self._level_dimensions: list[tuple[int, int]] | None = None
+        self._level_downsamples: tuple[float, ...] | None = None
 
         # Open OLE file
         self.ole = olefile.OleFileIO(filename)
 
         # Color correction
-        self._color_correction = ColorCorrection(style='Real')
+        self._color_correction = ColorCorrection(style="Real")
 
         # Parse structure
         self._parse_structure()
@@ -92,23 +100,29 @@ class MdsSlideOLE2:
         self._get_properties()
 
     def __repr__(self):
-        return '%s(%r)' % (self.__class__.__name__, self.__filename)
+        return "%s(%r)" % (self.__class__.__name__, self.__filename)
+
+    def _require_ole(self) -> Any:
+        if self.ole is None:
+            raise RuntimeError("MDS OLE file is not open")
+        return self.ole
 
     def _parse_structure(self):
         """Parse MDS OLE file structure"""
         # Analyze levels and tiles
         self._levels_data = defaultdict(list)
+        ole = self._require_ole()
 
-        for stream in self.ole.listdir():
-            if len(stream) >= 3 and stream[0] == 'DSI0':
+        for stream in ole.listdir():
+            if len(stream) >= 3 and stream[0] == "DSI0":
                 level_name = stream[1]
                 tile_name = stream[2]
                 self._levels_data[level_name].append(tile_name)
 
         # Sort levels by scale (descending - highest resolution first)
-        self._level_names = sorted(self._levels_data.keys(),
-                                   key=lambda x: float(x),
-                                   reverse=True)
+        self._level_names = sorted(
+            self._levels_data.keys(), key=lambda x: float(x), reverse=True
+        )
 
         # Calculate tile grid for each level
         self._level_grids = {}
@@ -117,7 +131,7 @@ class MdsSlideOLE2:
             rows = set()
             cols = set()
             for tile in tiles:
-                parts = tile.split('_')
+                parts = tile.split("_")
                 if len(parts) == 2:
                     try:
                         row = int(parts[0])
@@ -129,8 +143,8 @@ class MdsSlideOLE2:
 
             if rows and cols:
                 self._level_grids[level_name] = {
-                    'rows': max(rows) + 1,
-                    'cols': max(cols) + 1
+                    "rows": max(rows) + 1,
+                    "cols": max(cols) + 1,
                 }
 
         # Determine tile size by reading first tile
@@ -152,19 +166,19 @@ class MdsSlideOLE2:
     def _read_tile_data(self, level_name, tile_name):
         """Read raw tile data from OLE stream"""
         try:
-            stream_path = ['DSI0', level_name, tile_name]
-            data = self.ole.openstream(stream_path).read()
+            stream_path = ["DSI0", level_name, tile_name]
+            data = self._require_ole().openstream(stream_path).read()
             return data
         except:
             return None
 
     def _parse_info_xml(self):
         """Parse info.xml file for slide properties"""
-        info_xml_path = os.path.join(os.path.dirname(self.__filename), 'info.xml')
+        info_xml_path = os.path.join(os.path.dirname(self.__filename), "info.xml")
         if os.path.exists(info_xml_path):
             try:
                 # Try to read and fix encoding issues
-                with open(info_xml_path, 'r', encoding='utf-8', errors='ignore') as f:
+                with open(info_xml_path, "r", encoding="utf-8", errors="ignore") as f:
                     content = f.read()
                     # Replace problematic encoding declaration
                     content = content.replace('encoding="unicode"', 'encoding="utf-8"')
@@ -173,18 +187,18 @@ class MdsSlideOLE2:
                 root = ET.fromstring(content)
 
                 properties = {}
-                for item in root.findall('item'):
+                for item in root.findall("item"):
                     for key, value in item.attrib.items():
-                        if key == 'rows':
-                            properties['rows'] = int(value)
-                        elif key == 'cols':
-                            properties['cols'] = int(value)
-                        elif key == 'objective':
-                            properties['objective'] = float(value)
-                        elif key == 'create_time':
-                            properties['create_time'] = value
-                        elif key == 'scan_machine':
-                            properties['scan_machine'] = value
+                        if key == "rows":
+                            properties["rows"] = int(value)
+                        elif key == "cols":
+                            properties["cols"] = int(value)
+                        elif key == "objective":
+                            properties["objective"] = float(value)
+                        elif key == "create_time":
+                            properties["create_time"] = value
+                        elif key == "scan_machine":
+                            properties["scan_machine"] = value
 
                 return properties
             except Exception as e:
@@ -198,7 +212,7 @@ class MdsSlideOLE2:
         xml_props = self._parse_info_xml()
 
         # Calculate MPP from objective
-        objective = xml_props.get('objective', 40.0)
+        objective = xml_props.get("objective", 40.0)
         # Typical conversion: 40x objective ≈ 0.25 μm/pixel
         self.sampling_rate = 10.0 / objective if objective > 0 else 0.25
 
@@ -213,46 +227,45 @@ class MdsSlideOLE2:
     @property
     def dimensions(self):
         """Return the dimensions of the highest resolution level (level 0)."""
-        if not hasattr(self, '_dimensions'):
+        if self._dimensions is None:
             # Level 0 is the highest resolution (scale = 1.0)
             level_name = self._level_names[0]
-            grid = self._level_grids.get(level_name, {'rows': 1, 'cols': 1})
-            width = grid['cols'] * self._tile_width
-            height = grid['rows'] * self._tile_height
+            grid = self._level_grids.get(level_name, {"rows": 1, "cols": 1})
+            width = grid["cols"] * self._tile_width
+            height = grid["rows"] * self._tile_height
             self._dimensions = (width, height)
         return self._dimensions
 
     @property
     def level_dimensions(self):
         """Get dimensions for all levels"""
-        if not hasattr(self, '_level_dimensions'):
+        if self._level_dimensions is None:
             self._level_dimensions = []
             for level_name in self._level_names:
-                grid = self._level_grids.get(level_name, {'rows': 1, 'cols': 1})
-                width = grid['cols'] * self._tile_width
-                height = grid['rows'] * self._tile_height
+                grid = self._level_grids.get(level_name, {"rows": 1, "cols": 1})
+                width = grid["cols"] * self._tile_width
+                height = grid["rows"] * self._tile_height
                 self._level_dimensions.append((width, height))
         return self._level_dimensions
 
     @property
     def level_downsamples(self):
         """Get downsample factors for all levels"""
-        if not hasattr(self, '_level_downsamples'):
+        if self._level_downsamples is None:
             # Calculate downsamples based on level scales
             base_scale = float(self._level_names[0])  # Should be 1.0
             self._level_downsamples = tuple(
-                base_scale / float(level_name)
-                for level_name in self._level_names
+                base_scale / float(level_name) for level_name in self._level_names
             )
         return self._level_downsamples
 
     @property
     def magnification(self):
         """Get the magnification of the slide."""
-        objective = self._xml_properties.get('objective')
+        objective = self._xml_properties.get("objective")
         if objective:
             return float(objective)
-        
+
         # Fallback to calculating from sampling rate (mpp)
         if self.sampling_rate > 0:
             return 10.0 / self.sampling_rate
@@ -262,19 +275,19 @@ class MdsSlideOLE2:
     def properties(self):
         """Get slide properties"""
         props = {
-            'openslide.mpp-x': str(self.sampling_rate),
-            'openslide.mpp-y': str(self.sampling_rate),
-            'openslide.vendor': 'MDS'
+            "openslide.mpp-x": str(self.sampling_rate),
+            "openslide.mpp-y": str(self.sampling_rate),
+            "openslide.vendor": "MDS",
         }
 
         # Add XML properties if available
-        xml_props = getattr(self, '_xml_properties', {})
-        if 'objective' in xml_props:
-            props['openslide.objective-power'] = str(xml_props['objective'])
-        if 'create_time' in xml_props:
-            props['mds.create_time'] = xml_props['create_time']
-        if 'scan_machine' in xml_props:
-            props['mds.scan_machine'] = xml_props['scan_machine']
+        xml_props = getattr(self, "_xml_properties", {})
+        if "objective" in xml_props:
+            props["openslide.objective-power"] = str(xml_props["objective"])
+        if "create_time" in xml_props:
+            props["mds.create_time"] = xml_props["create_time"]
+        if "scan_machine" in xml_props:
+            props["mds.scan_machine"] = xml_props["scan_machine"]
 
         return props
 
@@ -286,18 +299,18 @@ class MdsSlideOLE2:
         base_dir = os.path.dirname(self.__filename)
 
         # Try to load label.jpg
-        label_path = os.path.join(base_dir, 'label.jpg')
+        label_path = os.path.join(base_dir, "label.jpg")
         if os.path.exists(label_path):
             try:
-                images['label'] = Image.open(label_path)
+                images["label"] = Image.open(label_path)
             except:
                 pass
 
         # Try to load macro.jpg
-        macro_path = os.path.join(base_dir, 'macro.jpg')
+        macro_path = os.path.join(base_dir, "macro.jpg")
         if os.path.exists(macro_path):
             try:
-                images['macro'] = Image.open(macro_path)
+                images["macro"] = Image.open(macro_path)
             except:
                 pass
 
@@ -339,7 +352,7 @@ class MdsSlideOLE2:
                 y = max(0, (base_height - sample_size) // 2)
 
                 thumbnail = self.read_region((x, y), 0, (sample_size, sample_size))
-                thumbnail = thumbnail.resize(size, Image.LANCZOS)
+                thumbnail = thumbnail.resize(size, Image.Resampling.LANCZOS)
                 return thumbnail
             else:
                 # For multi-level images, use the highest level
@@ -350,13 +363,15 @@ class MdsSlideOLE2:
                 read_width = min(level_dims[0], 512)
                 read_height = min(level_dims[1], 512)
 
-                thumbnail = self.read_region((0, 0), highest_level, (read_width, read_height))
-                thumbnail = thumbnail.resize(size, Image.LANCZOS)
+                thumbnail = self.read_region(
+                    (0, 0), highest_level, (read_width, read_height)
+                )
+                thumbnail = thumbnail.resize(size, Image.Resampling.LANCZOS)
                 return thumbnail
 
         except Exception as e:
             # Fallback to solid color
-            return Image.new('RGB', size, (200, 200, 200))
+            return Image.new("RGB", size, (200, 200, 200))
 
     def read_region(self, location, level, size):
         """Read a region from the slide
@@ -390,7 +405,7 @@ class MdsSlideOLE2:
         end_tile_row = (level_y + height - 1) // self._tile_height
 
         # Create output image
-        result = Image.new('RGB', (width, height), (240, 240, 240))
+        result = Image.new("RGB", (width, height), (240, 240, 240))
 
         # Read and composite tiles
         for tile_row in range(start_tile_row, end_tile_row + 1):
@@ -420,7 +435,9 @@ class MdsSlideOLE2:
                     crop_bottom = min(tile_img.height, height - tile_y)
 
                     if crop_right > crop_left and crop_bottom > crop_top:
-                        cropped = tile_img.crop((crop_left, crop_top, crop_right, crop_bottom))
+                        cropped = tile_img.crop(
+                            (crop_left, crop_top, crop_right, crop_bottom)
+                        )
                         paste_x = max(0, tile_x)
                         paste_y = max(0, tile_y)
                         result.paste(cropped, (paste_x, paste_y))
@@ -445,13 +462,13 @@ class MdsSlideOLE2:
         if style:
             self._color_correction.set_style(style)
 
-    def get_color_correction_info(self) -> dict:
+    def get_color_correction_info(self) -> dict[str, Any]:
         """Get current color correction parameters."""
         return self._color_correction.get_info()
 
     def close(self):
         """Close the slide"""
-        if hasattr(self, 'ole') and self.ole:
+        if hasattr(self, "ole") and self.ole:
             try:
                 self.ole.close()
             except:
@@ -461,12 +478,3 @@ class MdsSlideOLE2:
     def __del__(self):
         """Destructor"""
         self.close()
-
-    def __enter__(self):
-        """Context manager entry"""
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager exit"""
-        self.close()
-        return False

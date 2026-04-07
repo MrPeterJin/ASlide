@@ -1,9 +1,9 @@
 import io
 from typing import Optional
-from Aslide.kfb import kfb_lowlevel
 from PIL import Image
 from openslide import AbstractSlide, _OpenSlideMap
 
+from . import kfb_lowlevel
 from .color_correction import ColorCorrection
 
 
@@ -17,10 +17,10 @@ class KfbSlide(AbstractSlide):
         self.__filename = filename
         self._osr = kfb_lowlevel.kfbslide_open(filename)
         # Color correction
-        self._color_correction = ColorCorrection(style='Real')
+        self._color_correction = ColorCorrection(style="Real")
 
     def __repr__(self):
-        return '%s(%r)' % (self.__class__.__name__, self.__filename)
+        return "%s(%r)" % (self.__class__.__name__, self.__filename)
 
     @classmethod
     def detect_format(cls, filename):
@@ -29,7 +29,7 @@ class KfbSlide(AbstractSlide):
         if vendor:
             # Convert bytes to string if needed
             if isinstance(vendor, bytes):
-                return vendor.decode('utf-8', 'replace')
+                return vendor.decode("utf-8", "replace")
             return str(vendor) if vendor else None
         return None
 
@@ -47,13 +47,17 @@ class KfbSlide(AbstractSlide):
 
     @property
     def level_dimensions(self):
-        return tuple(kfb_lowlevel.kfbslide_get_level_dimensions(self._osr, i)
-                     for i in range(self.level_count))
+        return tuple(
+            kfb_lowlevel.kfbslide_get_level_dimensions(self._osr, i)
+            for i in range(self.level_count)
+        )
 
     @property
     def level_downsamples(self):
-        return tuple(kfb_lowlevel.kfbslide_get_level_downsample(self._osr, i)
-                     for i in range(self.level_count))
+        return tuple(
+            kfb_lowlevel.kfbslide_get_level_downsample(self._osr, i)
+            for i in range(self.level_count)
+        )
 
     @property
     def mpp(self):
@@ -61,8 +65,8 @@ class KfbSlide(AbstractSlide):
         try:
             # Try to get mpp from properties
             props = self.properties
-            if 'openslide.mpp-x' in props:
-                return float(props['openslide.mpp-x'])
+            if "openslide.mpp-x" in props:
+                return float(props["openslide.mpp-x"])
         except:
             pass
         return None
@@ -73,10 +77,10 @@ class KfbSlide(AbstractSlide):
         try:
             # Check properties for common keys
             props = self.properties
-            for key in ['openslide.objective-power', 'Magnification']:
+            for key in ["openslide.objective-power", "Magnification"]:
                 if key in props:
                     return float(props[key])
-            
+
             # Fallback to mpp-based calculation
             mpp = self.mpp
             if mpp and mpp > 0:
@@ -94,7 +98,9 @@ class KfbSlide(AbstractSlide):
         return _AssociatedImageMap(self._osr)
 
     def get_best_level_for_downsample(self, downsample):
-        return kfb_lowlevel.kfbslide_get_best_level_for_downsample(self._osr, downsample)
+        return kfb_lowlevel.kfbslide_get_best_level_for_downsample(
+            self._osr, downsample
+        )
 
     def read_fixed_region(self, location, level, size):
         """
@@ -150,7 +156,9 @@ class KfbSlide(AbstractSlide):
         level_y = int(y / downsample)
 
         # Pass the level-specific coordinates to the underlying function
-        result = kfb_lowlevel.kfbslide_read_roi_region(self._osr, level, level_x, level_y, width, height)
+        result = kfb_lowlevel.kfbslide_read_roi_region(
+            self._osr, level, level_x, level_y, width, height
+        )
 
         # Apply color correction if enabled
         result = self._color_correction.apply(result)
@@ -168,18 +176,20 @@ class KfbSlide(AbstractSlide):
         if style:
             self._color_correction.set_style(style)
 
-    def get_color_correction_info(self) -> dict:
+    def get_color_correction_info(self) -> dict[str, object]:
         """Get current color correction parameters."""
         return self._color_correction.get_info()
 
     def get_thumbnail(self, size):
         """Return a PIL.Image containing an RGB thumbnail of the image."""
-        thumb = self.read_region((0, 0), self.level_count - 1, self.level_dimensions[-1])
-        thumb = thumb.resize(size=size, resample=Image.LANCZOS)
+        thumb = self.read_region(
+            (0, 0), self.level_count - 1, self.level_dimensions[-1]
+        )
+        thumb = thumb.resize(size=size, resample=Image.Resampling.LANCZOS)
         return thumb
 
 
-class _KfbPropertyMap(_OpenSlideMap):
+class _KfbPropertyMap(_OpenSlideMap[str]):
     def _keys(self):
         return kfb_lowlevel.kfbslide_property_names(self._osr)
 
@@ -190,7 +200,7 @@ class _KfbPropertyMap(_OpenSlideMap):
         return v
 
 
-class _AssociatedImageMap(_OpenSlideMap):
+class _AssociatedImageMap(_OpenSlideMap[Image.Image]):
     def _keys(self):
         return kfb_lowlevel.kfbslide_get_associated_image_names(self._osr)
 
@@ -225,5 +235,6 @@ def main():
     im.show()
     im.close()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

@@ -17,8 +17,9 @@ Color correction pipeline:
 
 import os
 import xml.etree.ElementTree as ET
-from typing import Optional, Dict, Tuple
+from typing import Any
 import numpy as np
+from numpy.typing import NDArray
 from PIL import Image
 
 
@@ -26,27 +27,27 @@ class ColorCorrection:
     """Color correction processor for DYJ images."""
 
     # Default LUT directory (relative to this file)
-    LUT_DIR = os.path.join(os.path.dirname(__file__), 'lut')
+    LUT_DIR: str = os.path.join(os.path.dirname(__file__), "lut")
 
     # Predefined LUT styles (aligned with SDPC naming)
-    STYLES = {
-        'Real': 'real.lut',
-        'Gorgeous': 'real2.lut',
+    STYLES: dict[str, str] = {
+        "Real": "real.lut",
+        "Gorgeous": "real2.lut",
     }
 
-    def __init__(self, style: str = 'Real', lut_path: Optional[str] = None):
+    def __init__(self, style: str = "Real", lut_path: str | None = None):
         """Initialize color correction with a LUT file.
 
         Args:
             style: Predefined style name ('Real' or 'Real2')
             lut_path: Custom LUT file path (overrides style if provided)
         """
-        self._enabled = False
-        self._gamma = 1.0
-        self._ccm = np.eye(3, dtype=np.float32)  # Identity matrix
-        self._rgb_rate = np.ones(3, dtype=np.float32)
-        self._hsv_rate = np.ones(3, dtype=np.float32)
-        self._style = style
+        self._enabled: bool = False
+        self._gamma: float = 1.0
+        self._ccm: NDArray[np.float32] = np.eye(3, dtype=np.float32)
+        self._rgb_rate: NDArray[np.float32] = np.ones(3, dtype=np.float32)
+        self._hsv_rate: NDArray[np.float32] = np.ones(3, dtype=np.float32)
+        self._style: str = style
 
         # Load LUT file
         if lut_path:
@@ -56,7 +57,18 @@ class ColorCorrection:
             if os.path.exists(lut_file):
                 self._load_lut(lut_file)
 
-    def _load_lut(self, lut_path: str):
+    def _parse_float_values(
+        self, parent: ET.Element, expected_count: int
+    ) -> list[float] | None:
+        values: list[float] = []
+        for element in parent.findall("float"):
+            text = element.text
+            if text is None:
+                return None
+            values.append(float(text))
+        return values if len(values) == expected_count else None
+
+    def _load_lut(self, lut_path: str) -> None:
         """Load LUT configuration from XML file.
 
         Args:
@@ -67,29 +79,29 @@ class ColorCorrection:
             root = tree.getroot()
 
             # Parse gamma
-            gamma_elem = root.find('gamma')
+            gamma_elem = root.find("gamma")
             if gamma_elem is not None and gamma_elem.text:
                 self._gamma = float(gamma_elem.text)
 
             # Parse CCM (3x3 matrix, row-major)
-            ccm_elem = root.find('ccm')
+            ccm_elem = root.find("ccm")
             if ccm_elem is not None:
-                floats = [float(f.text) for f in ccm_elem.findall('float')]
-                if len(floats) == 9:
+                floats = self._parse_float_values(ccm_elem, 9)
+                if floats is not None:
                     self._ccm = np.array(floats, dtype=np.float32).reshape(3, 3)
 
             # Parse RGB rate
-            rgb_elem = root.find('rgbRate')
+            rgb_elem = root.find("rgbRate")
             if rgb_elem is not None:
-                floats = [float(f.text) for f in rgb_elem.findall('float')]
-                if len(floats) == 3:
+                floats = self._parse_float_values(rgb_elem, 3)
+                if floats is not None:
                     self._rgb_rate = np.array(floats, dtype=np.float32)
 
             # Parse HSV rate
-            hsv_elem = root.find('hsvRate')
+            hsv_elem = root.find("hsvRate")
             if hsv_elem is not None:
-                floats = [float(f.text) for f in hsv_elem.findall('float')]
-                if len(floats) == 3:
+                floats = self._parse_float_values(hsv_elem, 3)
+                if floats is not None:
                     self._hsv_rate = np.array(floats, dtype=np.float32)
 
         except Exception as e:
@@ -135,14 +147,14 @@ class ColorCorrection:
             return image
 
         # Convert to numpy array
-        has_alpha = image.mode == 'RGBA'
+        has_alpha = image.mode == "RGBA"
+        alpha_channel: NDArray[np.uint8] | None = None
         if has_alpha:
             img_array = np.array(image, dtype=np.float32)
             rgb = img_array[:, :, :3]
-            alpha = img_array[:, :, 3:4]
+            alpha_channel = img_array[:, :, 3:4].astype(np.uint8)
         else:
-            rgb = np.array(image.convert('RGB'), dtype=np.float32)
-            alpha = None
+            rgb = np.array(image.convert("RGB"), dtype=np.float32)
 
         # Normalize to [0, 1]
         rgb = rgb / 255.0
@@ -166,20 +178,19 @@ class ColorCorrection:
         rgb = np.clip(rgb * 255, 0, 255).astype(np.uint8)
 
         # Reconstruct image
-        if has_alpha:
-            result = np.concatenate([rgb, alpha.astype(np.uint8)], axis=2)
-            return Image.fromarray(result, mode='RGBA')
+        if alpha_channel is not None:
+            result = np.concatenate([rgb, alpha_channel], axis=2)
+            return Image.fromarray(result, mode="RGBA")
         else:
-            return Image.fromarray(rgb, mode='RGB')
+            return Image.fromarray(rgb, mode="RGB")
 
-    def get_info(self) -> Dict:
+    def get_info(self) -> dict[str, Any]:
         """Get color correction parameters info."""
         return {
-            'enabled': self._enabled,
-            'style': self._style,
-            'gamma': self._gamma,
-            'ccm': self._ccm.tolist(),
-            'rgb_rate': self._rgb_rate.tolist(),
-            'hsv_rate': self._hsv_rate.tolist(),
+            "enabled": self._enabled,
+            "style": self._style,
+            "gamma": self._gamma,
+            "ccm": self._ccm.tolist(),
+            "rgb_rate": self._rgb_rate.tolist(),
+            "hsv_rate": self._hsv_rate.tolist(),
         }
-

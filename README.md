@@ -82,9 +82,11 @@ The installation script will automatically:
 
 After installation, you may need to set up environment variables for shared libraries:
 
-**Option 1: Automatic (Recommended)**
+**Option 1: Explicit Python Setup (Recommended)**
 ```python
-# Environment is set up automatically when importing
+from Aslide.bootstrap import setup_runtime_environment
+
+setup_runtime_environment()
 import Aslide
 ```
 

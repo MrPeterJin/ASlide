@@ -1,0 +1,286 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+import importlib
+from pathlib import Path
+from typing import Any, Callable
+
+from openslide import OpenSlide
+from openslide.deepzoom import DeepZoomGenerator as OpenSlideDeepZoomGenerator
+
+from .capabilities import BackendCapabilities
+
+
+BackendFactory = Callable[[], type[Any]] | type[Any]
+AvailabilityCheck = Callable[[], bool]
+
+
+def _load_attr(module_name: str, attribute_name: str) -> type[Any]:
+    module = importlib.import_module(module_name)
+    return getattr(module, attribute_name)
+
+
+def _module_available(module_name: str) -> bool:
+    try:
+        importlib.import_module(module_name)
+    except Exception:
+        return False
+    return True
+
+
+@dataclass(frozen=True)
+class FormatEntry:
+    format_id: str
+    extensions: tuple[str, ...]
+    slide_backend: BackendFactory
+    deepzoom_backend: BackendFactory | None = None
+    availability_check: AvailabilityCheck = lambda: True
+    capabilities: BackendCapabilities = field(default_factory=BackendCapabilities)
+
+    def is_available(self) -> bool:
+        return self.availability_check()
+
+    def load_slide_backend(self) -> type[Any]:
+        backend = self.slide_backend
+        if isinstance(backend, type):
+            return backend
+        return backend()
+
+    def load_deepzoom_backend(self) -> type[Any] | None:
+        backend = self.deepzoom_backend
+        if backend is None:
+            return None
+        if isinstance(backend, type):
+            return backend
+        return backend()
+
+    def create_slide(self, path: str) -> Any:
+        return self.load_slide_backend()(path)
+
+
+class FormatRegistry:
+    def __init__(self) -> None:
+        self._entries: list[FormatEntry] = []
+
+    def register(self, entry: FormatEntry) -> None:
+        self._entries = [
+            existing
+            for existing in self._entries
+            if existing.format_id != entry.format_id
+        ]
+        self._entries.append(entry)
+
+    def get(self, format_id: str) -> FormatEntry:
+        for entry in self._entries:
+            if entry.format_id == format_id:
+                return entry
+        raise LookupError(f"Unknown format id: {format_id}")
+
+    def entries(self) -> tuple[FormatEntry, ...]:
+        return tuple(self._entries)
+
+    def resolve_path(self, path: str) -> FormatEntry:
+        extension = Path(path).suffix.lower()
+        for entry in self._entries:
+            if extension in entry.extensions:
+                if entry.is_available():
+                    return entry
+                raise LookupError(
+                    f"Format '{entry.format_id}' is unavailable in this environment"
+                )
+        raise LookupError(f"Unsupported file extension: {extension or '<none>'}")
+
+
+def build_default_registry() -> FormatRegistry:
+    new_registry = FormatRegistry()
+
+    new_registry.register(
+        FormatEntry(
+            format_id="qptiff",
+            extensions=(".qptiff",),
+            slide_backend=lambda: _load_attr(
+                "Aslide.qptiff.qptiff_slide", "QptiffSlide"
+            ),
+            deepzoom_backend=lambda: _load_attr(
+                "Aslide.qptiff.qptiff_deepzoom", "QptiffDeepZoomGenerator"
+            ),
+            availability_check=lambda: _module_available("qptifffile"),
+            capabilities=BackendCapabilities(
+                has_associated_images=True, has_deepzoom=True
+            ),
+        )
+    )
+    new_registry.register(
+        FormatEntry(
+            format_id="kfb",
+            extensions=(".kfb",),
+            slide_backend=lambda: _load_attr("Aslide.kfb.kfb_slide", "KfbSlide"),
+            deepzoom_backend=lambda: _load_attr(
+                "Aslide.kfb.kfb_deepzoom", "DeepZoomGenerator"
+            ),
+            capabilities=BackendCapabilities(
+                has_label_image=True,
+                has_color_correction=True,
+                has_associated_images=True,
+                has_deepzoom=True,
+                requires_bootstrap=True,
+            ),
+        )
+    )
+    new_registry.register(
+        FormatEntry(
+            format_id="tmap",
+            extensions=(".tmap",),
+            slide_backend=lambda: _load_attr("Aslide.tmap.tmap_slide", "TmapSlide"),
+            deepzoom_backend=lambda: _load_attr(
+                "Aslide.tmap.tmap_deepzoom", "DeepZoomGenerator"
+            ),
+            capabilities=BackendCapabilities(
+                has_label_image=True,
+                has_color_correction=True,
+                has_associated_images=True,
+                has_deepzoom=True,
+                requires_bootstrap=True,
+            ),
+        )
+    )
+    new_registry.register(
+        FormatEntry(
+            format_id="sdpc",
+            extensions=(".sdpc", ".dyqx"),
+            slide_backend=lambda: _load_attr("Aslide.sdpc.sdpc_slide", "SdpcSlide"),
+            deepzoom_backend=lambda: _load_attr(
+                "Aslide.sdpc.sdpc_deepzoom", "DeepZoomGenerator"
+            ),
+            capabilities=BackendCapabilities(
+                has_label_image=True,
+                has_color_correction=True,
+                has_associated_images=True,
+                has_deepzoom=True,
+                requires_bootstrap=True,
+            ),
+        )
+    )
+    new_registry.register(
+        FormatEntry(
+            format_id="vsi",
+            extensions=(".vsi",),
+            slide_backend=lambda: _load_attr("Aslide.vsi.vsi_slide", "VsiSlide"),
+            availability_check=lambda: (
+                _module_available("bioformats") and _module_available("javabridge")
+            ),
+        )
+    )
+    new_registry.register(
+        FormatEntry(
+            format_id="mds",
+            extensions=(".mds", ".mdsx"),
+            slide_backend=lambda: _load_attr("Aslide.mds.mds_slide", "MdsSlide"),
+            deepzoom_backend=lambda: _load_attr(
+                "Aslide.mds.mds_deepzoom", "DeepZoomGenerator"
+            ),
+            capabilities=BackendCapabilities(
+                has_color_correction=True, has_associated_images=True, has_deepzoom=True
+            ),
+        )
+    )
+    new_registry.register(
+        FormatEntry(
+            format_id="tron",
+            extensions=(".tron",),
+            slide_backend=lambda: _load_attr("Aslide.tron.slide", "TronSlide"),
+            deepzoom_backend=lambda: _load_attr(
+                "Aslide.tron.deepzoom", "TronDeepZoomGenerator"
+            ),
+            capabilities=BackendCapabilities(
+                has_associated_images=True, has_deepzoom=True, requires_bootstrap=True
+            ),
+        )
+    )
+    new_registry.register(
+        FormatEntry(
+            format_id="isyntax",
+            extensions=(".isyntax",),
+            slide_backend=lambda: _load_attr(
+                "Aslide.isyntax.isyntax_slide", "IsyntaxSlide"
+            ),
+            deepzoom_backend=lambda: _load_attr(
+                "Aslide.isyntax.isyntax_deepzoom", "IsyntaxDeepZoomGenerator"
+            ),
+            availability_check=lambda: _module_available("isyntax"),
+            capabilities=BackendCapabilities(
+                has_associated_images=True, has_deepzoom=True
+            ),
+        )
+    )
+    new_registry.register(
+        FormatEntry(
+            format_id="dyj",
+            extensions=(".dyj",),
+            slide_backend=lambda: _load_attr("Aslide.dyj.dyj_slide", "DyjSlide"),
+            deepzoom_backend=lambda: _load_attr(
+                "Aslide.dyj.dyj_deepzoom", "DeepZoomGenerator"
+            ),
+            capabilities=BackendCapabilities(
+                has_color_correction=True, has_deepzoom=True
+            ),
+        )
+    )
+    new_registry.register(
+        FormatEntry(
+            format_id="ibl",
+            extensions=(".ibl",),
+            slide_backend=lambda: _load_attr("Aslide.ibl.ibl_slide", "IblSlide"),
+            deepzoom_backend=lambda: _load_attr(
+                "Aslide.ibl.ibl_deepzoom", "DeepZoomGenerator"
+            ),
+            capabilities=BackendCapabilities(has_deepzoom=True),
+        )
+    )
+    new_registry.register(
+        FormatEntry(
+            format_id="zyp",
+            extensions=(".zyp",),
+            slide_backend=lambda: _load_attr("Aslide.zyp.zyp_slide", "ZypSlide"),
+            deepzoom_backend=lambda: _load_attr(
+                "Aslide.zyp.zyp_deepzoom", "DeepZoomGenerator"
+            ),
+            capabilities=BackendCapabilities(has_deepzoom=True),
+        )
+    )
+    new_registry.register(
+        FormatEntry(
+            format_id="bif",
+            extensions=(".bif",),
+            slide_backend=lambda: _load_attr("Aslide.bif.bif_slide", "BifSlide"),
+            deepzoom_backend=lambda: _load_attr(
+                "Aslide.bif.bif_deepzoom", "DeepZoomGenerator"
+            ),
+            capabilities=BackendCapabilities(has_deepzoom=True),
+        )
+    )
+    new_registry.register(
+        FormatEntry(
+            format_id="openslide",
+            extensions=(
+                ".svs",
+                ".svslide",
+                ".tif",
+                ".tiff",
+                ".ndpi",
+                ".vms",
+                ".vmu",
+                ".scn",
+                ".mrxs",
+            ),
+            slide_backend=OpenSlide,
+            deepzoom_backend=OpenSlideDeepZoomGenerator,
+            capabilities=BackendCapabilities(
+                has_associated_images=True, has_deepzoom=True
+            ),
+        )
+    )
+    return new_registry
+
+
+registry = build_default_registry()

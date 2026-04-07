@@ -139,7 +139,7 @@ class IsyntaxDeepZoomGenerator:
         
         # Resize to the target tile size if necessary
         if tile.size != (tile_width, tile_height):
-            tile = tile.resize((tile_width, tile_height), Image.LANCZOS)
+            tile = tile.resize((tile_width, tile_height), Image.Resampling.LANCZOS)
         
         return tile
     

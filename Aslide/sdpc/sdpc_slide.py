@@ -3,10 +3,7 @@ from ctypes import *
 import gc
 from PIL import Image
 import io
-from .sdpc_bindings import (
-    sdpc_sdk, SDPCError, SDPCWSIType, ColorStyle,
-    c_int32
-)
+from .sdpc_bindings import sdpc_sdk, SDPCError, SDPCWSIType, ColorStyle, c_int32
 
 
 class SdpcSlide:
@@ -26,12 +23,12 @@ class SdpcSlide:
 
         # Open the slide
         status = c_int()
-        self.slide = sdpc_sdk.sqrayslide_open(
-            sdpcPath.encode('utf-8'), byref(status)
-        )
+        self.slide = sdpc_sdk.sqrayslide_open(sdpcPath.encode("utf-8"), byref(status))
 
         if not self.slide or status.value != SDPCError.SqSuccess:
-            error_msg = f"Failed to open SDPC file: {sdpcPath}, error code: {status.value}"
+            error_msg = (
+                f"Failed to open SDPC file: {sdpcPath}, error code: {status.value}"
+            )
             raise RuntimeError(error_msg)
 
         # Initialize cached properties
@@ -41,8 +38,9 @@ class SdpcSlide:
     def detect_format(cls, filename):
         """Detect if file is SDPC format"""
         import os
+
         ext = os.path.splitext(filename)[1].lower()
-        if ext in ['.sdpc']:
+        if ext in [".sdpc"]:
             return "sdpc"
         return None
 
@@ -58,16 +56,16 @@ class SdpcSlide:
 
         # Cache properties for openslide compatibility
         self._properties = {
-            'openslide.mpp-x': str(mpp_x.value),
-            'openslide.mpp-y': str(mpp_y.value),
-            'openslide.objective-power': str(magnification.value),
-            'openslide.vendor': 'TEKSQRAY',
-            'sdpc.magnification': magnification.value
+            "openslide.mpp-x": str(mpp_x.value),
+            "openslide.mpp-y": str(mpp_y.value),
+            "openslide.objective-power": str(magnification.value),
+            "openslide.vendor": "TEKSQRAY",
+            "sdpc.magnification": magnification.value,
         }
 
     def _check_closed(self):
         """Check if slide is closed and raise exception if so"""
-        if getattr(self, '_closed', False) or not self.slide:
+        if getattr(self, "_closed", False) or not self.slide:
             raise RuntimeError("Slide has been closed")
 
     @property
@@ -120,14 +118,14 @@ class SdpcSlide:
                     downsample = 1.0 / downsample
                 elif downsample <= 0:
                     # Handle invalid values
-                    downsample = float('inf')
+                    downsample = float("inf")
 
                 downsamples.append(downsample)
 
             # Ensure downsamples are monotonically increasing
             for i in range(1, len(downsamples)):
-                if downsamples[i] < downsamples[i-1]:
-                    downsamples[i] = max(downsamples[i], downsamples[i-1])
+                if downsamples[i] < downsamples[i - 1]:
+                    downsamples[i] = max(downsamples[i], downsamples[i - 1])
 
             self._level_downsamples = tuple(downsamples)
         return self._level_downsamples
@@ -203,8 +201,10 @@ class SdpcSlide:
         )
 
         if not success:
-            raise RuntimeError(f"Failed to read region at level-0 coords ({startX}, {startY}) "
-                             f"-> level-{level} coords ({level_x}, {level_y}) with size ({width}, {height})")
+            raise RuntimeError(
+                f"Failed to read region at level-0 coords ({startX}, {startY}) "
+                f"-> level-{level} coords ({level_x}, {level_y}) with size ({width}, {height})"
+            )
 
         # Convert BGRA buffer to numpy array
         bgra_array = np.frombuffer(bgra_buffer, dtype=np.uint8)
@@ -214,7 +214,7 @@ class SdpcSlide:
         rgb_array = bgra_array[:, :, [2, 1, 0]]  # BGR -> RGB
 
         # Create PIL Image
-        img = Image.fromarray(rgb_array, 'RGB')
+        img = Image.fromarray(rgb_array, "RGB")
         return img
 
     def get_thumbnail(self, size):
@@ -222,7 +222,9 @@ class SdpcSlide:
         self._check_closed()
         # Read from the highest level (lowest resolution)
         highest_level = self.level_count - 1
-        thumbnail = self.read_region((0, 0), highest_level, self.level_dimensions[highest_level])
+        thumbnail = self.read_region(
+            (0, 0), highest_level, self.level_dimensions[highest_level]
+        )
         thumbnail.thumbnail(size, Image.Resampling.LANCZOS)
         return thumbnail
 
@@ -236,12 +238,17 @@ class SdpcSlide:
 
             # Try to get label image (imageType=0 for label)
             success = sdpc_sdk.sqrayslide_read_label_jpeg(
-                self.slide, 0, byref(width), byref(height), byref(data), byref(data_size)
+                self.slide,
+                0,
+                byref(width),
+                byref(height),
+                byref(data),
+                byref(data_size),
             )
 
             if success and data and data_size.value > 0:
                 # Convert to bytes
-                buf = bytearray(data[:data_size.value])
+                buf = bytearray(data[: data_size.value])
 
                 # Free the memory allocated by the library
                 sdpc_sdk.sqrayslide_free_memory(data)
@@ -264,12 +271,17 @@ class SdpcSlide:
             data_size = c_int32()
 
             success = sdpc_sdk.sqrayslide_read_label_jpeg(
-                self.slide, 0, byref(width), byref(height), byref(data), byref(data_size)
+                self.slide,
+                0,
+                byref(width),
+                byref(height),
+                byref(data),
+                byref(data_size),
             )
 
             if success and data and data_size.value > 0:
-                with open(save_path, 'wb') as f:
-                    buf = bytearray(data[:data_size.value])
+                with open(save_path, "wb") as f:
+                    buf = bytearray(data[: data_size.value])
                     f.write(buf)
 
                 # Free the memory allocated by the library
@@ -288,7 +300,7 @@ class SdpcSlide:
         # Try to get label image
         label_img = self.get_label_image()
         if label_img:
-            result['label'] = label_img
+            result["label"] = label_img
 
         # Try to get thumbnail image (imageType=1 for thumbnail)
         try:
@@ -298,14 +310,19 @@ class SdpcSlide:
             data_size = c_int32()
 
             success = sdpc_sdk.sqrayslide_read_label_jpeg(
-                self.slide, 1, byref(width), byref(height), byref(data), byref(data_size)
+                self.slide,
+                1,
+                byref(width),
+                byref(height),
+                byref(data),
+                byref(data_size),
             )
 
             if success and data and data_size.value > 0:
-                buf = bytearray(data[:data_size.value])
+                buf = bytearray(data[: data_size.value])
                 sdpc_sdk.sqrayslide_free_memory(data)
                 thumbnail_img = Image.open(io.BytesIO(buf))
-                result['thumbnail'] = thumbnail_img
+                result["thumbnail"] = thumbnail_img
         except Exception:
             pass  # Thumbnail is optional
 
@@ -317,14 +334,19 @@ class SdpcSlide:
             data_size = c_int32()
 
             success = sdpc_sdk.sqrayslide_read_label_jpeg(
-                self.slide, 2, byref(width), byref(height), byref(data), byref(data_size)
+                self.slide,
+                2,
+                byref(width),
+                byref(height),
+                byref(data),
+                byref(data_size),
             )
 
             if success and data and data_size.value > 0:
-                buf = bytearray(data[:data_size.value])
+                buf = bytearray(data[: data_size.value])
                 sdpc_sdk.sqrayslide_free_memory(data)
                 macro_img = Image.open(io.BytesIO(buf))
-                result['macro'] = macro_img
+                result["macro"] = macro_img
         except Exception:
             pass  # Macro is optional
 
@@ -333,11 +355,11 @@ class SdpcSlide:
     def close(self):
         """Close the slide and free resources"""
         # Check if already closed to prevent double-free
-        if getattr(self, '_closed', False):
+        if getattr(self, "_closed", False):
             return
 
         try:
-            if hasattr(self, 'slide') and self.slide:
+            if hasattr(self, "slide") and self.slide:
                 sdpc_sdk.sqrayslide_close(self.slide)
                 self.slide = None
         except Exception as e:
@@ -352,20 +374,15 @@ class SdpcSlide:
             self._properties = None
             gc.collect()
 
-    def __enter__(self):
-        """Context manager entry"""
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        """Context manager exit"""
-        self.close()
-        return False  # Don't suppress exceptions
-
     def __del__(self):
         """Destructor - safely close if not already closed"""
         try:
             # Only close if not already closed and slide exists
-            if not getattr(self, '_closed', False) and hasattr(self, 'slide') and self.slide:
+            if (
+                not getattr(self, "_closed", False)
+                and hasattr(self, "slide")
+                and self.slide
+            ):
                 self.close()
         except Exception:
             # Silently ignore errors during destruction to prevent crashes
@@ -383,13 +400,15 @@ class SdpcSlide:
         """Get the barcode of the slide if available"""
         barcode_ptr = sdpc_sdk.sqrayslide_get_barcode(self.slide)
         if barcode_ptr:
-            return barcode_ptr.decode('utf-8')
+            return barcode_ptr.decode("utf-8")
         return None
 
     def get_slide_type(self):
         """Get the slide type (Brightfield or Fluorescence)"""
         slide_type = sdpc_sdk.sqrayslide_get_type(self.slide)
-        return "Brightfield" if slide_type == SDPCWSIType.Brightfield else "Fluorescence"
+        return (
+            "Brightfield" if slide_type == SDPCWSIType.Brightfield else "Fluorescence"
+        )
 
     def apply_color_correction(self, apply=True, style="Real"):
         """

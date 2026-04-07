@@ -1,7 +1,5 @@
-# VSI (cellSens) format support for ASlide
-# Based on Bio-Formats CellSensReader implementation
-# Licensed under GPL v2+ (compatible with Bio-Formats license)
+from .bioformats_vsi_slide import BioFormatsVsiSlide
 
-from .vsi_slide import VsiSlide
+VsiSlide = BioFormatsVsiSlide
 
-__all__ = ['VsiSlide']
+__all__ = ["VsiSlide", "BioFormatsVsiSlide"]

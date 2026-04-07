@@ -11,24 +11,23 @@ from typing import Optional, Dict
 from PIL import Image
 
 try:
-    from PIL import ImageCms
-    HAS_IMAGECMS = True
+    from PIL import ImageCms as _ImageCms
 except ImportError:
-    HAS_IMAGECMS = False
+    _ImageCms = None
 
 
 class ColorCorrection:
     """Color correction processor for MDS/MDSX images using ICC profile."""
 
     # Default ICC directory (relative to this file)
-    ICC_DIR = os.path.join(os.path.dirname(__file__), 'icc')
+    ICC_DIR = os.path.join(os.path.dirname(__file__), "icc")
 
     # Predefined ICC profiles (aligned with SDPC/DYJ/KFB naming)
     PROFILES = {
-        'Real': 'real.icm',
+        "Real": "real.icm",
     }
 
-    def __init__(self, style: str = 'Real', icc_path: Optional[str] = None):
+    def __init__(self, style: str = "Real", icc_path: Optional[str] = None):
         """Initialize color correction with an ICC profile.
 
         Args:
@@ -40,7 +39,7 @@ class ColorCorrection:
         self._transform = None
         self._icc_profile = None
 
-        if not HAS_IMAGECMS:
+        if _ImageCms is None:
             print("Warning: PIL.ImageCms not available. Color correction disabled.")
             return
 
@@ -58,23 +57,23 @@ class ColorCorrection:
         Args:
             icc_path: Path to the ICC profile file
         """
-        if not HAS_IMAGECMS:
+        if _ImageCms is None:
             return
 
         try:
             # Load the ICC profile
-            self._icc_profile = ImageCms.getOpenProfile(icc_path)
+            self._icc_profile = _ImageCms.getOpenProfile(icc_path)
 
             # Create sRGB profile as output
-            srgb_profile = ImageCms.createProfile('sRGB')
+            srgb_profile = _ImageCms.createProfile("sRGB")
 
             # Create transform from device RGB to sRGB
-            self._transform = ImageCms.buildTransform(
+            self._transform = _ImageCms.buildTransform(
                 self._icc_profile,
                 srgb_profile,
-                'RGB',
-                'RGB',
-                renderingIntent=ImageCms.Intent.PERCEPTUAL
+                "RGB",
+                "RGB",
+                renderingIntent=_ImageCms.Intent.PERCEPTUAL,
             )
         except Exception as e:
             print(f"Warning: Failed to load ICC profile {icc_path}: {e}")
@@ -121,21 +120,27 @@ class ColorCorrection:
 
         try:
             # Handle RGBA images
-            has_alpha = image.mode == 'RGBA'
+            has_alpha = image.mode == "RGBA"
+            alpha_channel = None
             if has_alpha:
                 # Split alpha channel
-                r, g, b, a = image.split()
-                rgb_image = Image.merge('RGB', (r, g, b))
+                r, g, b, alpha_channel = image.split()
+                rgb_image = Image.merge("RGB", (r, g, b))
             else:
-                rgb_image = image.convert('RGB') if image.mode != 'RGB' else image
+                rgb_image = image.convert("RGB") if image.mode != "RGB" else image
 
             # Apply ICC transform
-            corrected = ImageCms.applyTransform(rgb_image, self._transform)
+            transform = self._transform
+            if _ImageCms is None or transform is None:
+                return image
+            corrected = _ImageCms.applyTransform(rgb_image, transform)
+            if corrected is None:
+                return image
 
             # Restore alpha channel if needed
-            if has_alpha:
+            if has_alpha and alpha_channel is not None:
                 r, g, b = corrected.split()
-                return Image.merge('RGBA', (r, g, b, a))
+                return Image.merge("RGBA", (r, g, b, alpha_channel))
             else:
                 return corrected
 
@@ -143,12 +148,11 @@ class ColorCorrection:
             print(f"Warning: Color correction failed: {e}")
             return image
 
-    def get_info(self) -> Dict:
+    def get_info(self) -> Dict[str, object]:
         """Get color correction parameters info."""
         return {
-            'enabled': self._enabled,
-            'style': self._style,
-            'has_transform': self._transform is not None,
-            'has_imagecms': HAS_IMAGECMS,
+            "enabled": self._enabled,
+            "style": self._style,
+            "has_transform": self._transform is not None,
+            "has_imagecms": _ImageCms is not None,
         }
-

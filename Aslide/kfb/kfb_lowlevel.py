@@ -18,33 +18,35 @@ from openslide._version import __version__
 #     _lib = cdll.LoadLibrary('libKFBSlide.0.dylib')
 # else:
 try:
-    _lib = cdll.LoadLibrary('libkfbslide.so')
+    _lib = cdll.LoadLibrary("libkfbslide.so")
 except:
     dirname, _ = os.path.split(os.path.abspath(__file__))
-    sys.path.append(os.path.join(dirname, 'lib'))
-    soPath = os.path.join(dirname, 'lib/libkfbslide.so')
+    sys.path.append(os.path.join(dirname, "lib"))
+    soPath = os.path.join(dirname, "lib/libkfbslide.so")
     _lib = cdll.LoadLibrary(soPath)
 
 # Load libImageOperationLib.so for memory deallocation
 # Attempt to load from system path first, then local lib directory
 _libOp = None
 try:
-    if os.path.exists('libImageOperationLib.so'):
-        _libOp = cdll.LoadLibrary('libImageOperationLib.so')
+    if os.path.exists("libImageOperationLib.so"):
+        _libOp = cdll.LoadLibrary("libImageOperationLib.so")
     else:
         # Try loading as system library
-        _libOp = cdll.LoadLibrary('libImageOperationLib.so')
+        _libOp = cdll.LoadLibrary("libImageOperationLib.so")
 except:
     pass
 
 if _libOp is None:
     # Fallback to local lib directory
     dirname, _ = os.path.split(os.path.abspath(__file__))
-    libOpPath = os.path.join(dirname, 'lib/libImageOperationLib.so')
+    libOpPath = os.path.join(dirname, "lib/libImageOperationLib.so")
     if os.path.exists(libOpPath):
         _libOp = cdll.LoadLibrary(libOpPath)
     else:
-        raise Exception("libImageOperationLib.so not found, please check ASlide installation.")
+        raise Exception(
+            "libImageOperationLib.so not found, please check ASlide installation."
+        )
 
 if _libOp is not None:
     DeleteImageDataFunc = _libOp.DeleteImageDataFunc
@@ -55,6 +57,7 @@ else:
     # Better to fail loudly? Or just warn?
     # Given the user context, better to fail if we depend on it.
     print("Warning: libImageOperationLib.so not found. Memory leak may occur.")
+
     def DeleteImageDataFunc(ptr):
         pass
 
@@ -86,20 +89,24 @@ class _KfbSlide(object):
             raise ValueError("Passing closed kfbSlide object")
         return obj
 
+
 # check for errors opening an image file and wrap the resulting handle
 def _check_open(result, _func, _args):
     if result is None:
         raise lowlevel.OpenSlideUnsupportedFormatError(
-            "Unsupported or missing image file")
+            "Unsupported or missing image file"
+        )
     slide = _KfbSlide(c_void_p(result))
     # err = get_error(slide)
     # if err is not None:
     #     raise lowlevel.OpenSlideError(err)
     return slide
 
+
 # prevent further operations on slide handle after it is closed
 def _check_close(_result, _func, args):
     args[0].invalidate()
+
 
 # check if the library got into an error state after each library call
 def _check_error(result, func, args):
@@ -107,6 +114,7 @@ def _check_error(result, func, args):
     # if err is not None:
     #     raise lowlevel.OpenSlideError(err)
     return lowlevel._check_string(result, func, args)
+
 
 # Convert returned NULL-terminated char** into a list of strings
 def _check_name_list(result, func, args):
@@ -116,8 +124,9 @@ def _check_name_list(result, func, args):
         name = result[i]
         if not name:
             break
-        names.append(name.decode('UTF-8', 'replace'))
+        names.append(name.decode("UTF-8", "replace"))
     return names
+
 
 # resolve and return an OpenSlide function with the specified properties
 def _func(name, restype, argtypes, errcheck=_check_error):
@@ -128,82 +137,125 @@ def _func(name, restype, argtypes, errcheck=_check_error):
         func.errcheck = errcheck
     return func
 
-detect_vendor = _func("kfbslide_detect_vendor", c_char_p, [lowlevel._utf8_p],
-                                   lowlevel._check_string)
+
+detect_vendor = _func(
+    "kfbslide_detect_vendor", c_char_p, [lowlevel._utf8_p], lowlevel._check_string
+)
 
 _kfbslide_open = _func("kfbslide_open", c_void_p, [lowlevel._utf8_p], _check_open)
 
-#_kfbslide_set_attrs = _func("kfbslide_set_attrs", None, [_KfbSlide, c_int, c_int, c_int, c_float, c_double, c_float, c_int])
+# _kfbslide_set_attrs = _func("kfbslide_set_attrs", None, [_KfbSlide, c_int, c_int, c_int, c_float, c_double, c_float, c_int])
+
 
 def kfbslide_open(name):
     osr = _kfbslide_open(name)
-    #height, width, scale, spendTime, scanTime, imgCapRes, blkSize = kfbHeaderInfo.GetHeaderInfo(name)
-    #_kfbslide_set_attrs(osr, height, width, scale, spendTime, scanTime, imgCapRes, blkSize)
+    # height, width, scale, spendTime, scanTime, imgCapRes, blkSize = kfbHeaderInfo.GetHeaderInfo(name)
+    # _kfbslide_set_attrs(osr, height, width, scale, spendTime, scanTime, imgCapRes, blkSize)
     return osr
+
 
 kfbslide_close = _func("kfbslide_close", None, [_KfbSlide], lowlevel._check_close)
 
 kfbslide_get_level_count = _func("kfbslide_get_level_count", c_int32, [_KfbSlide])
 
-_kfbslide_get_level_dimensions = _func("kfbslide_get_level_dimensions", None,
-                                       [_KfbSlide, c_int32, POINTER(c_int64), POINTER(c_int64)])
+_kfbslide_get_level_dimensions = _func(
+    "kfbslide_get_level_dimensions",
+    None,
+    [_KfbSlide, c_int32, POINTER(c_int64), POINTER(c_int64)],
+)
+
 
 def kfbslide_get_level_dimensions(osr, level):
     w, h = c_int64(), c_int64()
     _kfbslide_get_level_dimensions(osr, level, byref(w), byref(h))
     return (w.value, h.value)
 
-kfbslide_get_level_downsample = _func("kfbslide_get_level_downsample",
-                                      c_double, [_KfbSlide, c_int32])
+
+kfbslide_get_level_downsample = _func(
+    "kfbslide_get_level_downsample", c_double, [_KfbSlide, c_int32]
+)
 
 kfbslide_get_best_level_for_downsample = _func(
-    "kfbslide_get_best_level_for_downsample", c_int32, [_KfbSlide, c_double])
+    "kfbslide_get_best_level_for_downsample", c_int32, [_KfbSlide, c_double]
+)
 
-_kfbslide_read_region = _func("kfbslide_read_region", c_bool, [_KfbSlide, c_int32, c_int64, c_int64, POINTER(c_int), POINTER(POINTER(c_ubyte))])
+_kfbslide_read_region = _func(
+    "kfbslide_read_region",
+    c_bool,
+    [_KfbSlide, c_int32, c_int64, c_int64, POINTER(c_int), POINTER(POINTER(c_ubyte))],
+)
 
-_kfbslide_read_roi_region = _func("kfbslide_get_image_roi_stream", c_bool, [_KfbSlide, c_int32, c_int64, c_int64, c_int64, c_int64, POINTER(c_int), POINTER(POINTER(c_ubyte))])
+_kfbslide_read_roi_region = _func(
+    "kfbslide_get_image_roi_stream",
+    c_bool,
+    [
+        _KfbSlide,
+        c_int32,
+        c_int64,
+        c_int64,
+        c_int64,
+        c_int64,
+        POINTER(c_int),
+        POINTER(POINTER(c_ubyte)),
+    ],
+)
+
 
 def kfbslide_read_region(osr, level, pos_x, pos_y):
     data_length = c_int()
     pixel = POINTER(c_ubyte)()
-    if not _kfbslide_read_region( osr, level, pos_x, pos_y, byref(data_length), byref(pixel)):
+    if not _kfbslide_read_region(
+        osr, level, pos_x, pos_y, byref(data_length), byref(pixel)
+    ):
         raise ValueError("Fail to read region")
     # import numpy as np
     # return np.ctypeslib.as_array(pixel, shape=(data_length.value,))
-    
+
     # Copy data to Python-managed memory
     arr = np.ctypeslib.as_array(pixel, shape=(data_length.value,)).copy()
-    
+
     # Free C memory
     DeleteImageDataFunc(pixel)
-    
-    return PIL.Image.open(io.BytesIO(arr)).convert('RGBA')
+
+    return PIL.Image.open(io.BytesIO(arr)).convert("RGBA")
+
 
 def kfbslide_read_roi_region(osr, level, pos_x, pos_y, width, height):
     data_length = c_int()
     pixel = POINTER(c_ubyte)()
-    if not _kfbslide_read_roi_region( osr, level, pos_x, pos_y, width, height, byref(data_length), byref(pixel)):
+    if not _kfbslide_read_roi_region(
+        osr, level, pos_x, pos_y, width, height, byref(data_length), byref(pixel)
+    ):
         raise ValueError("Fail to read roi region")
     # img = PIL.Image.frombuffer('RGBA', (width, height), pixel, 'raw', 'RGBA', 0, 1)
 
     # import numpy as np
     # return np.ctypeslib.as_array(pixel, shape=(data_length.value,))
-    
+
     # Copy data to Python-managed memory
     arr = np.ctypeslib.as_array(pixel, shape=(data_length.value,)).copy()
-    
+
     # Free C memory
     DeleteImageDataFunc(pixel)
-    
-    return PIL.Image.open(io.BytesIO(arr)).convert('RGBA')
 
-kfbslide_property_names = _func("kfbslide_get_property_names", POINTER(c_char_p),
-                                    [_KfbSlide], _check_name_list)
+    return PIL.Image.open(io.BytesIO(arr)).convert("RGBA")
 
-kfbslide_property_value = _func("kfbslide_get_property_value", c_char_p,
-                                [_KfbSlide, lowlevel._utf8_p])
 
-_kfbslide_get_associated_image_names = _func("kfbslide_get_associated_image_names", POINTER(c_char_p), [_KfbSlide], _check_name_list)
+kfbslide_property_names = _func(
+    "kfbslide_get_property_names", POINTER(c_char_p), [_KfbSlide], _check_name_list
+)
+
+kfbslide_property_value = _func(
+    "kfbslide_get_property_value", c_char_p, [_KfbSlide, lowlevel._utf8_p]
+)
+
+_kfbslide_get_associated_image_names = _func(
+    "kfbslide_get_associated_image_names",
+    POINTER(c_char_p),
+    [_KfbSlide],
+    _check_name_list,
+)
+
 
 def kfbslide_get_associated_image_names(osr):
     names = _kfbslide_get_associated_image_names(osr)
@@ -214,30 +266,45 @@ def kfbslide_get_associated_image_names(osr):
         rtn.append(name)
     return rtn
 
-_kfbslide_get_associated_image_dimensions = _func("kfbslide_get_associated_image_dimensions", c_void_p, [_KfbSlide, lowlevel._utf8_p, POINTER(c_int64), POINTER(c_int64), POINTER(c_int)])
 
-def kfbslide_get_associated_image_dimensions( osr, name):
+_kfbslide_get_associated_image_dimensions = _func(
+    "kfbslide_get_associated_image_dimensions",
+    c_void_p,
+    [_KfbSlide, lowlevel._utf8_p, POINTER(c_int64), POINTER(c_int64), POINTER(c_int)],
+)
+
+
+def kfbslide_get_associated_image_dimensions(osr, name):
     w, h = c_int64(), c_int64()
     data_length = c_int()
-    _kfbslide_get_associated_image_dimensions(osr, name, byref(w), byref(h), byref(data_length))
+    _kfbslide_get_associated_image_dimensions(
+        osr, name, byref(w), byref(h), byref(data_length)
+    )
     return (w.value, h.value), data_length.value
 
-_kfbslide_read_associated_image = _func("kfbslide_read_associated_image", c_void_p, [_KfbSlide, lowlevel._utf8_p, POINTER(POINTER(c_ubyte))])
+
+_kfbslide_read_associated_image = _func(
+    "kfbslide_read_associated_image",
+    c_void_p,
+    [_KfbSlide, lowlevel._utf8_p, POINTER(POINTER(c_ubyte))],
+)
+
 
 def kfbslide_read_associated_image(osr, name):
     data_length = kfbslide_get_associated_image_dimensions(osr, name)[1]
     pixel = POINTER(c_ubyte)()
     _kfbslide_read_associated_image(osr, name, byref(pixel))
     import numpy as np
+
     narray = np.ctypeslib.as_array(pixel, shape=(data_length,)).copy()
-    
-    # Free C memory
-    DeleteImageDataFunc(pixel)
-    
+
     from io import BytesIO
+
     buf = BytesIO(narray)
     from PIL import Image
+
     return Image.open(buf)
+
 
 def main():
     kfb_file_path = "/path/to/kfb/file"
@@ -250,15 +317,19 @@ def main():
     height = c_int64()
     for level in range(level_cnt):
         _kfbslide_get_level_dimensions(osr, c_int32(level), byref(width), byref(height))
-        print("Level {0} : {1}, {2}".format( level, width, height))
+        print("Level {0} : {1}, {2}".format(level, width, height))
 
         downsample = kfbslide_get_level_downsample(osr, level)
-        print("Level {0} downsample : {1}".format( level, downsample))
-        print("Level {0} best downsample : {1}".format( level, kfbslide_get_best_level_for_downsample(osr, downsample - 1)))
-    prop_names = kfbslide_property_names( osr )
+        print("Level {0} downsample : {1}".format(level, downsample))
+        print(
+            "Level {0} best downsample : {1}".format(
+                level, kfbslide_get_best_level_for_downsample(osr, downsample - 1)
+            )
+        )
+    prop_names = kfbslide_property_names(osr)
     print(prop_names)
     for name in prop_names:
-        print( name, "  --->  ", kfbslide_property_value( osr, name))
+        print(name, "  --->  ", kfbslide_property_value(osr, name))
 
     asso_img_names = kfbslide_get_associated_image_names(osr)
     print("Associate Imagae Names : ", asso_img_names)
@@ -267,17 +338,26 @@ def main():
             break
         ksize, datalength = kfbslide_get_associated_image_dimensions(osr, name)
         width, height = ksize
-        print( name, " ---> width : ", width, ", height : ", height, ", datalength : ", datalength)
+        print(
+            name,
+            " ---> width : ",
+            width,
+            ", height : ",
+            height,
+            ", datalength : ",
+            datalength,
+        )
         img = kfbslide_read_associated_image(osr, name)
         file_name = "./output/" + name + ".jpg"
-        img.save( file_name)
+        img.save(file_name)
     # '''
-    x_mid = int(int( width / 256 / 2) * 256)
-    y_mid = int(int( height / 256 / 2) * 256)
+    x_mid = int((int(width) // 256 // 2) * 256)
+    y_mid = int((int(height) // 256 // 2) * 256)
     data_length = c_int()
     pixel = POINTER(c_ubyte)()
-    _kfbslide_read_region( osr, 5, x_mid, y_mid, byref(data_length), byref(pixel))
+    _kfbslide_read_region(osr, 5, x_mid, y_mid, byref(data_length), byref(pixel))
     import numpy as np
+
     nparr = np.ctypeslib.as_array(pixel, shape=(data_length.value,))
     with open("./output/img_test.jpg", "wb") as file:
         file.write(nparr)
@@ -285,7 +365,8 @@ def main():
     # '''
     kfbslide_close(osr)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     try:
         main()
     except Exception as err:
