@@ -80,3 +80,68 @@ def test_qptiff_registry_entry_is_no_longer_statically_multiplex() -> None:
     entry = registry.get("qptiff")
 
     assert entry.slide_family != "multiplex"
+
+
+def test_registry_prefers_probe_matched_ome_entry_over_generic_tiff(
+    fake_ome_multiplex_backend, fake_generic_tiff_backend
+) -> None:
+    from Aslide.registry import FormatEntry, FormatRegistry
+
+    registry = FormatRegistry()
+    registry.register(
+        FormatEntry(
+            format_id="ome_tiff",
+            extensions=(".tif", ".tiff"),
+            slide_backend=fake_ome_multiplex_backend,
+            slide_family="multiplex",
+            probe=lambda path: path.endswith(".ome.tiff"),
+        )
+    )
+    registry.register(
+        FormatEntry(
+            format_id="openslide",
+            extensions=(".tif", ".tiff"),
+            slide_backend=fake_generic_tiff_backend,
+        )
+    )
+
+    resolved = registry.resolve_path("roi/marker.ome.tiff")
+
+    assert resolved.format_id == "ome_tiff"
+
+
+def test_registry_falls_back_to_generic_tiff_when_probe_rejects(
+    fake_ome_multiplex_backend, fake_generic_tiff_backend
+) -> None:
+    from Aslide.registry import FormatEntry, FormatRegistry
+
+    registry = FormatRegistry()
+    registry.register(
+        FormatEntry(
+            format_id="ome_tiff",
+            extensions=(".tif", ".tiff"),
+            slide_backend=fake_ome_multiplex_backend,
+            slide_family="multiplex",
+            probe=lambda path: False,
+        )
+    )
+    registry.register(
+        FormatEntry(
+            format_id="openslide",
+            extensions=(".tif", ".tiff"),
+            slide_backend=fake_generic_tiff_backend,
+        )
+    )
+
+    resolved = registry.resolve_path("roi/channel.tiff")
+
+    assert resolved.format_id == "openslide"
+
+
+def test_default_registry_exposes_mcd_entry() -> None:
+    from Aslide.registry import registry
+
+    entry = registry.get("mcd")
+
+    assert entry.slide_family == "multiplex"
+    assert ".mcd" in entry.extensions

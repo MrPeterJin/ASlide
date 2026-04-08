@@ -39,3 +39,18 @@ def test_vsi_module_exports_authoritative_backend() -> None:
     from Aslide.vsi.bioformats_vsi_slide import BioFormatsVsiSlide
 
     assert VsiSlide is BioFormatsVsiSlide
+
+
+def test_registry_exposes_ome_and_mcd_multiplex_capabilities() -> None:
+    from Aslide.registry import registry
+
+    ome_entry = registry.get("ome_tiff")
+    mcd_entry = registry.get("mcd")
+
+    assert ome_entry.slide_family == "multiplex"
+    assert ome_entry.capabilities.supports_biomarkers is True
+    assert ome_entry.capabilities.requires_explicit_channel_read is True
+
+    assert mcd_entry.slide_family == "multiplex"
+    assert mcd_entry.capabilities.supports_biomarkers is True
+    assert mcd_entry.capabilities.requires_explicit_channel_read is True

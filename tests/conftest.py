@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+from pathlib import Path
+import sys
 from dataclasses import dataclass, field
 from collections.abc import Iterator, Mapping
 from typing import Any
 
 import pytest
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 
 @dataclass
@@ -199,6 +206,49 @@ def fake_multiplex_backend() -> type[FakeMultiplexBackend]:
 @pytest.fixture
 def fake_multiplex_deepzoom_backend() -> type[FakeMultiplexDeepZoomBackend]:
     return FakeMultiplexDeepZoomBackend
+
+
+@dataclass
+class FakeOmeMultiplexBackend(FakeMultiplexBackend):
+    format_id: str = "fake-ome"
+    biomarkers: tuple[str, ...] = ("SMA", "CD3", "DAPI")
+    sibling_paths: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        self.sibling_paths = (
+            "/tmp/141Pr_141Pr_SMA.ome.tiff",
+            "/tmp/170Er_170Er_CD3.ome.tiff",
+            "/tmp/171Yb_171Yb_Histone3.ome.tiff",
+        )
+
+
+@pytest.fixture
+def fake_ome_multiplex_backend() -> type[FakeOmeMultiplexBackend]:
+    return FakeOmeMultiplexBackend
+
+
+@dataclass
+class FakeGenericTiffBackend(FakeSlideBackend):
+    format_id: str = "generic-tiff"
+    properties: dict[str, str] = field(
+        default_factory=lambda: {"openslide.vendor": "OpenSlide", "format": "tiff"}
+    )
+
+
+@pytest.fixture
+def fake_generic_tiff_backend() -> type[FakeGenericTiffBackend]:
+    return FakeGenericTiffBackend
+
+
+@dataclass
+class FakeMcdBackend(FakeMultiplexBackend):
+    format_id: str = "mcd"
+    biomarkers: tuple[str, ...] = ("DNA1", "CD3", "CD20")
+
+
+@pytest.fixture
+def fake_mcd_backend() -> type[FakeMcdBackend]:
+    return FakeMcdBackend
 
 
 @dataclass
