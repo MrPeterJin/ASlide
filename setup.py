@@ -328,6 +328,9 @@ setup(
         "Aslide.ibl": ["*.py"],
         "Aslide.zyp": ["*.py"],
         "Aslide.bif": ["*.py"],
+        "Aslide.ome_tiff": ["*.py"],
+        "Aslide.generic_tiff": ["*.py"],
+        "Aslide.mcd": ["*.py"],
     },
     cmdclass={"install": CustomInstall},
     platforms="linux",
@@ -336,10 +339,11 @@ setup(
         "Pillow",
         "openslide-bin",
         "openslide-python",
-        "qptifffile",  # For QPTiff format support
-        "tifffile",  # For QPTiff format support
-        "pyisyntax",  # For iSyntax format support
-        "olefile",  # For MDS format support
+        "qptifffile",
+        "tifffile",
+        "readimc",
+        "pyisyntax",
+        "olefile",
     ],
     python_requires=">=3.10",
     classifiers=[
