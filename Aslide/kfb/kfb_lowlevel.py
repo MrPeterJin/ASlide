@@ -1,9 +1,9 @@
 from __future__ import division
+import ctypes
 from ctypes import *
 from itertools import count
 import PIL.Image
 import platform
-import sys
 import io
 import os
 import numpy as np
@@ -12,41 +12,30 @@ from openslide.lowlevel import OpenSlideError, OpenSlideUnsupportedFormatError
 from openslide._version import __version__
 # import kfbHeaderInfo
 
-# if platform.system() == 'Windows':
-#     _lib = cdll.LoadLibrary("KFB.dll")
-# elif platform.system() == 'Darwin':
-#     _lib = cdll.LoadLibrary('libKFBSlide.0.dylib')
-# else:
-try:
-    _lib = cdll.LoadLibrary("libkfbslide.so")
-except:
-    dirname, _ = os.path.split(os.path.abspath(__file__))
-    sys.path.append(os.path.join(dirname, "lib"))
-    soPath = os.path.join(dirname, "lib/libkfbslide.so")
-    _lib = cdll.LoadLibrary(soPath)
+dirname, _ = os.path.split(os.path.abspath(__file__))
+LIB_DIR = os.path.join(dirname, "lib")
 
-# Load libImageOperationLib.so for memory deallocation
-# Attempt to load from system path first, then local lib directory
-_libOp = None
-try:
-    if os.path.exists("libImageOperationLib.so"):
-        _libOp = cdll.LoadLibrary("libImageOperationLib.so")
-    else:
-        # Try loading as system library
-        _libOp = cdll.LoadLibrary("libImageOperationLib.so")
-except:
-    pass
 
-if _libOp is None:
-    # Fallback to local lib directory
-    dirname, _ = os.path.split(os.path.abspath(__file__))
-    libOpPath = os.path.join(dirname, "lib/libImageOperationLib.so")
-    if os.path.exists(libOpPath):
-        _libOp = cdll.LoadLibrary(libOpPath)
-    else:
-        raise Exception(
-            "libImageOperationLib.so not found, please check ASlide installation."
-        )
+def _bundled_library_path(lib_name: str) -> str:
+    lib_path = os.path.join(LIB_DIR, lib_name)
+    if not os.path.exists(lib_path):
+        raise OSError(f"Bundled library not found: {lib_path}")
+    return lib_path
+
+
+def _load_bundled_library(lib_name: str, mode: int = RTLD_GLOBAL) -> ctypes.CDLL:
+    return ctypes.CDLL(_bundled_library_path(lib_name), mode=mode)
+
+
+try:
+    _libjpeg = _load_bundled_library("libjpeg.so.9")
+    _lib = _load_bundled_library("libkfbslide.so")
+    _libOp = _load_bundled_library("libImageOperationLib.so")
+except OSError as exc:
+    raise OSError(
+        "Failed to load bundled KFB shared libraries. "
+        f"Expected them under {LIB_DIR}. Original error: {exc}"
+    ) from exc
 
 if _libOp is not None:
     DeleteImageDataFunc = _libOp.DeleteImageDataFunc
@@ -297,6 +286,7 @@ def kfbslide_read_associated_image(osr, name):
     import numpy as np
 
     narray = np.ctypeslib.as_array(pixel, shape=(data_length,)).copy()
+    DeleteImageDataFunc(pixel)
 
     from io import BytesIO
 
