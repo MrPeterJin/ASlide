@@ -77,12 +77,11 @@ The installation script will automatically:
 - Install required Python packages (numpy, Pillow, openslide-python, qptifffile, tifffile, pyisyntax)
 - Bundle OpenCV 3.4.2 and all dependencies
 - Copy vendor-specific shared libraries to the appropriate locations
-- Set up environment variables for library paths
-- Create helper scripts for environment configuration
+- Create optional helper scripts for backends that still need runtime environment setup
 
 ### Post-Installation Setup
 
-After installation, you may need to set up environment variables for shared libraries:
+Most bundled backends work after installation without extra shell setup. If a backend still needs runtime library hints, use one of the optional helpers below:
 
 **Option 1: Explicit Python Setup (Recommended)**
 ```python
@@ -95,7 +94,7 @@ import Aslide
 **Option 2: Manual Shell Configuration**
 ```bash
 # Add to your ~/.bashrc or ~/.zshrc
-export LD_LIBRARY_PATH=/path/to/site-packages/Aslide/sdpc/lib:/path/to/site-packages/Aslide/kfb/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/path/to/site-packages/Aslide/sdpc/lib:/path/to/site-packages/Aslide/tron/lib:$LD_LIBRARY_PATH
 
 # Reload your shell configuration
 source ~/.bashrc
@@ -249,10 +248,10 @@ python setup.py install --force
 
 #### 2. Environment Variables Not Set
 
-If libraries are installed but not found at runtime, manually set `LD_LIBRARY_PATH`:
+If libraries are installed but not found at runtime, manually set `LD_LIBRARY_PATH` for the remaining vendor SDK directories that rely on it:
 
 ```bash
-export LD_LIBRARY_PATH=$ASLIDE_PATH/sdpc/lib:$ASLIDE_PATH/kfb/lib:$ASLIDE_PATH/tron/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=$ASLIDE_PATH/sdpc/lib:$ASLIDE_PATH/tron/lib:$LD_LIBRARY_PATH
 ```
 
 #### 3. Permission Issues
