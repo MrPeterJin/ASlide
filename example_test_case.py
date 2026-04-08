@@ -90,7 +90,6 @@ def test_basic_functionality(slide_path):
 
 
 def test_qptiff_biomarkers(slide_path):
-    """Test QPTiff format multi-channel biomarker features"""
     print(f"\n{'=' * 80}")
     print(f"QPTiff Multi-channel Test: {slide_path}")
     print(f"{'=' * 80}")
@@ -102,35 +101,32 @@ def test_qptiff_biomarkers(slide_path):
                 print(f"Skipped: Not QPTiff format (current: {slide.format})")
                 return
 
-            # 1. Get biomarker list
-            print(f"\n[Biomarker Channels]")
-            biomarkers = slide.get_biomarkers()
-            print(f"  Available channels: {biomarkers}")
-            print(f"  Channel count: {len(biomarkers)}")
+            print(f"\n[QPTIFF Classification]")
+            print(f"  slide_family: {slide.slide_family}")
 
-            # 2. Read default channel (usually first one)
-            print(f"\n[Default Channel Read]")
-            region_default = slide.read_region((0, 0), 0, (512, 512))
-            print(
-                f"  Default channel (usually {biomarkers[0] if biomarkers else 'N/A'})"
-            )
-            print(f"  Size: {region_default.size}, Mode: {region_default.mode}")
-            default_path = f"test_output_qptiff_default.png"
-            region_default.save(default_path)
-            print(f"  Saved to: {default_path}")
-
-            # 3. Read each biomarker channel
-            print(f"\n[Individual Channel Read]")
-            for biomarker in biomarkers:
-                region = slide.read_region_biomarker(
-                    location=(0, 0), level=0, size=(512, 512), biomarker=biomarker
-                )
-                print(f"  {biomarker}: {region.size}, {region.mode}")
-                output_path = f"test_output_qptiff_{biomarker}.png"
+            if slide.slide_family == "brightfield":
+                region = slide.read_region((0, 0), 0, (512, 512))
+                print(f"  Brightfield region: {region.size}, {region.mode}")
+                output_path = "test_output_qptiff_brightfield.png"
                 region.save(output_path)
-                print(f"    Saved to: {output_path}")
+                print(f"  Saved to: {output_path}")
+            else:
+                biomarkers = slide.list_biomarkers()
+                print(f"\n[Biomarker Channels]")
+                print(f"  Available channels: {biomarkers}")
+                print(f"  Channel count: {len(biomarkers)}")
 
-            print(f"\nQPTiff multi-channel test completed")
+                print(f"\n[Individual Channel Read]")
+                for biomarker in biomarkers:
+                    region = slide.read_biomarker_region(
+                        location=(0, 0), level=0, size=(512, 512), biomarker=biomarker
+                    )
+                    print(f"  {biomarker}: {region.size}, {region.mode}")
+                    output_path = f"test_output_qptiff_{biomarker}.png"
+                    region.save(output_path)
+                    print(f"    Saved to: {output_path}")
+
+            print(f"\nQPTiff runtime classification test completed")
 
     except Exception as e:
         print(f"\nError: {e}")

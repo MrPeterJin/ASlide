@@ -33,6 +33,7 @@ class FormatEntry:
     format_id: str
     extensions: tuple[str, ...]
     slide_backend: BackendFactory
+    slide_family: str = "brightfield"
     deepzoom_backend: BackendFactory | None = None
     availability_check: AvailabilityCheck = lambda: True
     capabilities: BackendCapabilities = field(default_factory=BackendCapabilities)
@@ -101,12 +102,17 @@ def build_default_registry() -> FormatRegistry:
             slide_backend=lambda: _load_attr(
                 "Aslide.qptiff.qptiff_slide", "QptiffSlide"
             ),
+            slide_family="qptiff",
             deepzoom_backend=lambda: _load_attr(
                 "Aslide.qptiff.qptiff_deepzoom", "QptiffDeepZoomGenerator"
             ),
             availability_check=lambda: _module_available("qptifffile"),
             capabilities=BackendCapabilities(
-                has_associated_images=True, has_deepzoom=True
+                has_associated_images=False,
+                has_deepzoom=True,
+                supports_biomarkers=True,
+                requires_explicit_channel_read=True,
+                default_display_biomarker="DAPI",
             ),
         )
     )

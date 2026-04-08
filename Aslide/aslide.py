@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Iterator
-from typing import Any
+from typing import Any, cast
 
+from .errors import MissingDefaultBiomarkerError, UnsupportedOperationError
 from .registry import registry
 
 
@@ -48,10 +49,48 @@ class Slide:
         self.registry_entry = registry.resolve_path(filepath)
         self.format = self.registry_entry.extensions[0]
         self._backend = self.registry_entry.create_slide(filepath)
+        self._slide_family = self._resolve_slide_family()
 
     @property
     def backend(self) -> Any:
         return self._backend
+
+    @property
+    def slide_family(self) -> str:
+        return self._slide_family
+
+    def _resolve_slide_family(self) -> str:
+        family = cast(str, self.registry_entry.slide_family)
+        if family != "qptiff":
+            return family
+
+        classify = getattr(self.backend, "classify_slide_family", None)
+        if callable(classify):
+            return cast(str, classify())
+
+        markers = None
+        list_markers = getattr(self.backend, "list_biomarkers", None)
+        if callable(list_markers):
+            markers = list_markers()
+        elif hasattr(self.backend, "get_biomarkers"):
+            maybe_get = getattr(self.backend, "get_biomarkers")
+            if callable(maybe_get):
+                markers = maybe_get()
+
+        raw_markers = cast(list[Any], markers or [])
+        normalized = [
+            str(marker).strip().lower() for marker in raw_markers if str(marker).strip()
+        ]
+        if len(normalized) == 1 and normalized[0] in {"h&e", "he"}:
+            return "brightfield"
+        return "multiplex"
+
+    @property
+    def supports_biomarkers(self) -> bool:
+        return (
+            self.registry_entry.capabilities.supports_biomarkers
+            or self.slide_family == "multiplex"
+        )
 
     @property
     def _osr(self) -> Any:
@@ -107,7 +146,9 @@ class Slide:
     @property
     def associated_images(self) -> Any:
         backend_images = getattr(self.backend, "associated_images", {})
-        thumbnail_factory = getattr(self.backend, "get_thumbnail", None)
+        thumbnail_factory = None
+        if self.slide_family == "brightfield":
+            thumbnail_factory = getattr(self.backend, "get_thumbnail", None)
         return AssociatedImagesView(backend_images, thumbnail_factory)
 
     def label_image(self, save_path: str | None = None) -> Any:
@@ -131,7 +172,46 @@ class Slide:
         return self.backend.get_best_level_for_downsample(downsample)
 
     def get_thumbnail(self, size: tuple[int, int]) -> Any:
+        if self.slide_family != "brightfield":
+            raise UnsupportedOperationError(
+                "Multiplex slides do not support generic thumbnails; use a display biomarker-aware path instead"
+            )
         return self.backend.get_thumbnail(size)
+
+    def list_biomarkers(self) -> list[str]:
+        if self.slide_family != "multiplex":
+            raise UnsupportedOperationError(
+                f"Biomarker operations are not supported for {self.slide_family} slides"
+            )
+        return self.backend.list_biomarkers()
+
+    def get_default_display_biomarker(self) -> str:
+        if self.slide_family != "multiplex":
+            raise UnsupportedOperationError(
+                f"Biomarker operations are not supported for {self.slide_family} slides"
+            )
+        try:
+            return self.backend.get_default_display_biomarker()
+        except MissingDefaultBiomarkerError:
+            raise
+        except Exception as exc:
+            raise MissingDefaultBiomarkerError(str(exc)) from exc
+
+    def read_biomarker_region(
+        self,
+        location: tuple[int, int],
+        level: int,
+        size: tuple[int, int],
+        biomarker: str,
+    ) -> Any:
+        if self.slide_family != "multiplex":
+            raise UnsupportedOperationError(
+                f"Biomarker operations are not supported for {self.slide_family} slides"
+            )
+        image = self.backend.read_biomarker_region(location, level, size, biomarker)
+        if hasattr(image, "mode") and image.mode != "RGBA":
+            return image.convert("RGBA")
+        return image
 
     def read_region(
         self,
@@ -139,6 +219,10 @@ class Slide:
         level: int,
         size: tuple[int, int],
     ) -> Any:
+        if self.slide_family != "brightfield":
+            raise UnsupportedOperationError(
+                "Multiplex slides require an explicit biomarker; use read_biomarker_region()"
+            )
         image = self.backend.read_region(location, level, size)
         if hasattr(image, "mode") and image.mode != "RGBA":
             return image.convert("RGBA")
@@ -150,6 +234,10 @@ class Slide:
         level: int,
         size: tuple[int, int],
     ) -> Any:
+        if self.slide_family != "brightfield":
+            raise UnsupportedOperationError(
+                "Multiplex slides do not support generic fixed-region reads"
+            )
         image = self.backend.read_fixed_region(location, level, size)
         if hasattr(image, "mode") and image.mode != "RGBA":
             return image.convert("RGBA")

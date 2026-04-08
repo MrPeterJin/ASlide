@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import openslide
 from openslide.deepzoom import DeepZoomGenerator as OpenSlideDeepZoomGenerator
 
 from .aslide import Slide
@@ -15,13 +16,33 @@ class DeepZoom:
         overlap: int = 1,
         limit_bounds: bool = False,
         max_level_size: int = 10000,
+        biomarker: str | None = None,
     ) -> None:
         del max_level_size
         self.slide = slide
-        backend_class = slide.registry_entry.load_deepzoom_backend()
+        backend_class: Any = slide.registry_entry.load_deepzoom_backend()
         if backend_class is None:
             backend_class = OpenSlideDeepZoomGenerator
-        self._backend = backend_class(slide.backend, tile_size, overlap, limit_bounds)
+        if slide.slide_family == "multiplex":
+            resolved_biomarker = biomarker or slide.get_default_display_biomarker()
+            self._backend = backend_class(
+                slide.backend,
+                tile_size,
+                overlap,
+                limit_bounds,
+                biomarker=resolved_biomarker,
+            )
+        elif slide.format.lower() == ".qptiff" and hasattr(slide.backend, "_openslide"):
+            brightfield_backend = slide.backend._openslide
+            if brightfield_backend is None:
+                raise RuntimeError("Brightfield QPTIFF OpenSlide reader is closed")
+            self._backend = OpenSlideDeepZoomGenerator(
+                brightfield_backend, tile_size, overlap, limit_bounds
+            )
+        else:
+            self._backend = backend_class(
+                slide.backend, tile_size, overlap, limit_bounds
+            )
 
     @property
     def backend(self) -> Any:

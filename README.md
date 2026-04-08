@@ -131,6 +131,29 @@ thumbnail = slide.get_thumbnail((500, 500))
 slide.close()
 ```
 
+### Multiplex QPTIFF Usage
+
+QPTIFF files are classified at runtime. Brightfield H&E QPTIFF files behave like ordinary brightfield slides, while multiplex QPTIFF files require explicit biomarker-aware reads.
+
+```python
+from Aslide import Slide, DeepZoom
+
+slide = Slide('path/to/your/slide.qptiff')
+
+print(slide.slide_family)  # brightfield or multiplex
+
+if slide.slide_family == 'brightfield':
+    region = slide.read_region((0, 0), 0, (1000, 1000))
+else:
+    print(slide.list_biomarkers())
+    region = slide.read_biomarker_region(
+        (0, 0), 0, (1000, 1000), biomarker='DAPI'
+    )
+
+# For multiplex QPTIFF, DeepZoom display defaults to DAPI and raises if DAPI is absent
+viewer = DeepZoom(slide) if slide.slide_family == 'multiplex' else None
+```
+
 ### Advanced Usage
 
 For more advanced usage examples, including:

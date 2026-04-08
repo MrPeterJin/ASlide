@@ -5,6 +5,7 @@ Supports reading .qptiff files using the qptifffile library
 
 import os
 import numpy as np
+from numpy.typing import NDArray
 from PIL import Image
 from typing import Optional, Tuple, List, Dict, Any
 
@@ -14,10 +15,20 @@ except ImportError:
     _QPTiffFile = None
 
 from openslide import AbstractSlide
+import openslide
+
+from ..errors import (
+    MissingDefaultBiomarkerError,
+    UnknownBiomarkerError,
+    UnsupportedOperationError,
+)
 
 
 class QptiffSlide(AbstractSlide):
     """QPTiff slide reader using qptifffile library"""
+
+    DEFAULT_DISPLAY_BIOMARKER = "DAPI"
+    BRIGHTFIELD_MARKERS = {"h&e", "he"}
 
     def __init__(self, filename: str):
         """Initialize QPTiff slide
@@ -33,6 +44,7 @@ class QptiffSlide(AbstractSlide):
         AbstractSlide.__init__(self)
         self.__filename = filename
         self._qptiff = _QPTiffFile(filename)
+        self._openslide = None
 
         # Get basic information
         self._biomarkers = self._qptiff.get_biomarkers()
@@ -50,6 +62,9 @@ class QptiffSlide(AbstractSlide):
 
         # Set format for compatibility
         self.format = os.path.splitext(os.path.basename(filename))[-1]
+
+        if self.classify_slide_family() == "brightfield":
+            self._openslide = openslide.OpenSlide(filename)
 
     def __repr__(self):
         return f"{self.__class__.__name__}({self.__filename!r})"
@@ -80,6 +95,11 @@ class QptiffSlide(AbstractSlide):
         if hasattr(self, "_qptiff") and self._qptiff:
             self._qptiff.close()
             self._qptiff = None
+        if getattr(self, "_openslide", None) is not None:
+            openslide_reader = self._openslide
+            if openslide_reader is not None:
+                openslide_reader.close()
+            self._openslide = None
 
     @property
     def level_count(self) -> int:
@@ -146,39 +166,7 @@ class QptiffSlide(AbstractSlide):
 
     @property
     def associated_images(self) -> Dict[str, Image.Image]:
-        """Get associated images (thumbnails, etc.)"""
-        # QPTiff files don't typically have associated images like label/macro
-        # But we can create a thumbnail from the lowest resolution level
-        result = {}
-
-        try:
-            # Create thumbnail from the lowest resolution level
-            if self._level_count > 0:
-                last_level = self._level_count - 1
-                # Use the first biomarker for thumbnail
-                if self._biomarkers and self._qptiff is not None:
-                    thumbnail_data = self._qptiff.read_region(
-                        layers=[self._biomarkers[0]], level=last_level
-                    )
-                    # Handle different data ranges from qptifffile
-                    if thumbnail_data.dtype == np.uint8 and thumbnail_data.max() <= 1:
-                        # Data is uint8 but in 0-1 range, scale to 0-255
-                        normalized = (thumbnail_data * 255).astype(np.uint8)
-                    elif thumbnail_data.max() > thumbnail_data.min():
-                        # Standard normalization for other cases
-                        normalized = (
-                            (thumbnail_data - thumbnail_data.min())
-                            / (thumbnail_data.max() - thumbnail_data.min())
-                            * 255
-                        ).astype(np.uint8)
-                    else:
-                        normalized = np.zeros_like(thumbnail_data, dtype=np.uint8)
-
-                    result["thumbnail"] = Image.fromarray(normalized)
-        except Exception:
-            pass
-
-        return result
+        return {}
 
     def get_best_level_for_downsample(self, downsample: float) -> int:
         """Get the best level for a given downsample factor.
@@ -207,76 +195,15 @@ class QptiffSlide(AbstractSlide):
     def read_region(
         self, location: Tuple[int, int], level: int, size: Tuple[int, int]
     ) -> Image.Image:
-        """Read a region from the slide
+        if self.classify_slide_family() == "brightfield":
+            if self._openslide is None:
+                raise RuntimeError("Brightfield QPTIFF OpenSlide reader is closed")
+            return self._openslide.read_region(location, level, size)
+        raise UnsupportedOperationError(
+            "QPTIFF is a multiplex slide; use read_biomarker_region() with an explicit biomarker"
+        )
 
-        Args:
-            location: (x, y) tuple giving the top left pixel in the level 0 reference frame
-            level: the level number
-            size: (width, height) tuple giving the region size
-
-        Returns:
-            PIL Image object
-        """
-        x, y = location
-        width, height = size
-
-        if level >= self._level_count:
-            raise ValueError(
-                f"Level {level} not available (max level: {self._level_count - 1})"
-            )
-
-        # Calculate position at the requested level
-        downsample = self._level_downsamples[level]
-        level_x = int(x / downsample)
-        level_y = int(y / downsample)
-
-        try:
-            # For now, use the first biomarker (DAPI is usually first and most informative)
-            # In the future, this could be made configurable
-            biomarker = self._biomarkers[0] if self._biomarkers else None
-            if not biomarker:
-                raise ValueError("No biomarkers available in QPTiff file")
-
-            # Read the region
-            if self._qptiff is None:
-                raise RuntimeError("QPTiff reader is closed")
-
-            region_data = self._qptiff.read_region(
-                layers=[biomarker],
-                pos=(level_x, level_y),
-                shape=(height, width),  # Note: qptifffile uses (height, width)
-                level=level,
-            )
-
-            # Convert to PIL Image
-            # Handle different data ranges from qptifffile
-            if region_data.dtype == np.uint8 and region_data.max() <= 1:
-                # Data is uint8 but in 0-1 range, scale to 0-255
-                normalized = (region_data * 255).astype(np.uint8)
-            elif region_data.max() > region_data.min():
-                # Standard normalization for other cases
-                normalized = (
-                    (region_data - region_data.min())
-                    / (region_data.max() - region_data.min())
-                    * 255
-                ).astype(np.uint8)
-            else:
-                normalized = np.zeros_like(region_data, dtype=np.uint8)
-
-            # Convert grayscale to RGB for compatibility
-            if len(normalized.shape) == 2:
-                rgb_data = np.stack([normalized] * 3, axis=-1)
-            else:
-                rgb_data = normalized
-
-            return Image.fromarray(rgb_data)
-
-        except Exception as e:
-            # Return a blank image if reading fails
-            blank = np.zeros((height, width, 3), dtype=np.uint8)
-            return Image.fromarray(blank)
-
-    def read_region_biomarker(
+    def read_biomarker_region(
         self,
         location: Tuple[int, int],
         level: int,
@@ -295,7 +222,7 @@ class QptiffSlide(AbstractSlide):
             PIL Image object
         """
         if biomarker not in self._biomarkers:
-            raise ValueError(
+            raise UnknownBiomarkerError(
                 f"Biomarker '{biomarker}' not found. Available: {self._biomarkers}"
             )
 
@@ -312,66 +239,83 @@ class QptiffSlide(AbstractSlide):
         level_x = int(x / downsample)
         level_y = int(y / downsample)
 
-        try:
-            # Read the region for the specific biomarker
-            if self._qptiff is None:
-                raise RuntimeError("QPTiff reader is closed")
+        if self._qptiff is None:
+            raise RuntimeError("QPTiff reader is closed")
 
-            region_data = self._qptiff.read_region(
-                layers=[biomarker],
-                pos=(level_x, level_y),
-                shape=(height, width),  # Note: qptifffile uses (height, width)
-                level=level,
-            )
+        region_data = self._qptiff.read_region(
+            layers=[biomarker],
+            pos=(level_x, level_y),
+            shape=(height, width),
+            level=level,
+        )
 
-            # Convert to PIL Image
-            # Handle different data ranges from qptifffile
-            if region_data.dtype == np.uint8 and region_data.max() <= 1:
-                # Data is uint8 but in 0-1 range, scale to 0-255
-                normalized = (region_data * 255).astype(np.uint8)
-            elif region_data.max() > region_data.min():
-                # Standard normalization for other cases
-                normalized = (
-                    (region_data - region_data.min())
-                    / (region_data.max() - region_data.min())
-                    * 255
-                ).astype(np.uint8)
-            else:
-                normalized = np.zeros_like(region_data, dtype=np.uint8)
+        return self._region_to_image(region_data)
 
-            # Convert grayscale to RGB for compatibility
-            if len(normalized.shape) == 2:
-                rgb_data = np.stack([normalized] * 3, axis=-1)
-            else:
-                rgb_data = normalized
+    def read_region_biomarker(
+        self,
+        location: Tuple[int, int],
+        level: int,
+        size: Tuple[int, int],
+        biomarker: str,
+    ) -> Image.Image:
+        return self.read_biomarker_region(location, level, size, biomarker)
 
-            return Image.fromarray(rgb_data)
+    def list_biomarkers(self) -> List[str]:
+        return self._biomarkers.copy()
 
-        except Exception as e:
-            # Return a blank image if reading fails
-            blank = np.zeros((height, width, 3), dtype=np.uint8)
-            return Image.fromarray(blank)
+    def classify_slide_family(self) -> str:
+        normalized = [
+            marker.strip().lower() for marker in self._biomarkers if marker.strip()
+        ]
+        if len(normalized) == 1 and normalized[0] in self.BRIGHTFIELD_MARKERS:
+            return "brightfield"
+        return "multiplex"
+
+    def has_biomarker(self, name: str) -> bool:
+        return name in self._biomarkers
 
     def get_biomarkers(self) -> List[str]:
         """Get list of available biomarkers"""
-        return self._biomarkers.copy()
+        return self.list_biomarkers()
+
+    def get_default_display_biomarker(self) -> str:
+        if self.classify_slide_family() != "multiplex":
+            raise MissingDefaultBiomarkerError(
+                "Brightfield QPTIFF does not define a default multiplex display biomarker"
+            )
+        if self.DEFAULT_DISPLAY_BIOMARKER in self._biomarkers:
+            return self.DEFAULT_DISPLAY_BIOMARKER
+        raise MissingDefaultBiomarkerError(
+            f"Default display biomarker '{self.DEFAULT_DISPLAY_BIOMARKER}' is not available"
+        )
 
     def get_thumbnail(self, size: Tuple[int, int]) -> Image.Image:
-        """Get a thumbnail of the slide
+        if self.classify_slide_family() == "brightfield":
+            if self._openslide is None:
+                raise RuntimeError("Brightfield QPTIFF OpenSlide reader is closed")
+            return self._openslide.get_thumbnail(size)
+        raise UnsupportedOperationError(
+            "QPTIFF thumbnails require an explicit display biomarker-aware path"
+        )
 
-        Args:
-            size: (width, height) tuple giving the maximum size of the thumbnail
+    def _region_to_image(self, region_data: NDArray[Any]) -> Image.Image:
+        if region_data.dtype == np.uint8 and region_data.max() <= 1:
+            normalized = (region_data * 255).astype(np.uint8)
+        elif region_data.max() > region_data.min():
+            normalized = (
+                (region_data - region_data.min())
+                / (region_data.max() - region_data.min())
+                * 255
+            ).astype(np.uint8)
+        else:
+            normalized = np.zeros_like(region_data, dtype=np.uint8)
 
-        Returns:
-            PIL Image object
-        """
-        # Read from the lowest resolution level
-        last_level = self._level_count - 1
-        thumb = self.read_region((0, 0), last_level, self._level_dimensions[last_level])
+        if len(normalized.shape) == 2:
+            rgb_data = np.stack([normalized] * 3, axis=-1)
+        else:
+            rgb_data = normalized
 
-        # Resize to requested size while maintaining aspect ratio
-        thumb.thumbnail(size, Image.Resampling.LANCZOS)
-        return thumb
+        return Image.fromarray(rgb_data)
 
     def _calculate_downsamples(self) -> Tuple[float, ...]:
         """Calculate downsample factors for each level"""
