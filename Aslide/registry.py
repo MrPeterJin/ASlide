@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import importlib
+import inspect
 from pathlib import Path
 from typing import Any, Callable
 
@@ -13,6 +14,7 @@ from .capabilities import BackendCapabilities
 
 BackendFactory = Callable[[], type[Any]] | type[Any]
 AvailabilityCheck = Callable[[], bool]
+ProbeCheck = Callable[[str], bool]
 
 
 def _load_attr(module_name: str, attribute_name: str) -> type[Any]:
@@ -36,6 +38,7 @@ class FormatEntry:
     slide_family: str = "brightfield"
     deepzoom_backend: BackendFactory | None = None
     availability_check: AvailabilityCheck = lambda: True
+    probe: ProbeCheck | None = None
     capabilities: BackendCapabilities = field(default_factory=BackendCapabilities)
 
     def is_available(self) -> bool:
@@ -55,8 +58,24 @@ class FormatEntry:
             return backend
         return backend()
 
-    def create_slide(self, path: str) -> Any:
-        return self.load_slide_backend()(path)
+    def create_slide(self, path: str, **kwargs: Any) -> Any:
+        backend_cls = self.load_slide_backend()
+        signature = inspect.signature(backend_cls)
+        supported_kwargs = {
+            key: value for key, value in kwargs.items() if key in signature.parameters
+        }
+        return backend_cls(path, **supported_kwargs)
+
+    def matches_path(self, path: str) -> bool:
+        extension = Path(path).suffix.lower()
+        if extension not in self.extensions:
+            return False
+        if self.probe is None:
+            return True
+        try:
+            return bool(self.probe(path))
+        except Exception:
+            return False
 
 
 class FormatRegistry:
@@ -82,19 +101,64 @@ class FormatRegistry:
 
     def resolve_path(self, path: str) -> FormatEntry:
         extension = Path(path).suffix.lower()
+        fallback_entry: FormatEntry | None = None
         for entry in self._entries:
-            if extension in entry.extensions:
+            if entry.matches_path(path):
                 if entry.is_available():
                     return entry
                 raise LookupError(
                     f"Format '{entry.format_id}' is unavailable in this environment"
                 )
+            if entry.probe is not None:
+                continue
+            if extension in entry.extensions and fallback_entry is None:
+                fallback_entry = entry
+
+        if fallback_entry is not None:
+            if fallback_entry.is_available():
+                return fallback_entry
+            raise LookupError(
+                f"Format '{fallback_entry.format_id}' is unavailable in this environment"
+            )
         raise LookupError(f"Unsupported file extension: {extension or '<none>'}")
 
 
 def build_default_registry() -> FormatRegistry:
     new_registry = FormatRegistry()
 
+    new_registry.register(
+        FormatEntry(
+            format_id="ome_tiff",
+            extensions=(".tif", ".tiff"),
+            slide_backend=lambda: _load_attr(
+                "Aslide.ome_tiff.ome_tiff_slide", "OmeTiffSlide"
+            ),
+            slide_family="multiplex",
+            availability_check=lambda: _module_available("tifffile"),
+            probe=lambda path: _load_attr(
+                "Aslide.ome_tiff.probe", "is_ome_tiff_candidate"
+            )(path),
+            capabilities=BackendCapabilities(
+                has_associated_images=False,
+                supports_biomarkers=True,
+                requires_explicit_channel_read=True,
+            ),
+        )
+    )
+    new_registry.register(
+        FormatEntry(
+            format_id="mcd",
+            extensions=(".mcd",),
+            slide_backend=lambda: _load_attr("Aslide.mcd.mcd_slide", "McdSlide"),
+            slide_family="multiplex",
+            availability_check=lambda: _module_available("readimc"),
+            capabilities=BackendCapabilities(
+                has_associated_images=False,
+                supports_biomarkers=True,
+                requires_explicit_channel_read=True,
+            ),
+        )
+    )
     new_registry.register(
         FormatEntry(
             format_id="qptiff",
@@ -271,8 +335,6 @@ def build_default_registry() -> FormatRegistry:
             extensions=(
                 ".svs",
                 ".svslide",
-                ".tif",
-                ".tiff",
                 ".ndpi",
                 ".vms",
                 ".vmu",
@@ -284,6 +346,16 @@ def build_default_registry() -> FormatRegistry:
             capabilities=BackendCapabilities(
                 has_associated_images=True, has_deepzoom=True
             ),
+        )
+    )
+    new_registry.register(
+        FormatEntry(
+            format_id="generic_tiff",
+            extensions=(".tif", ".tiff"),
+            slide_backend=lambda: _load_attr(
+                "Aslide.generic_tiff.generic_tiff_slide", "GenericTiffSlide"
+            ),
+            capabilities=BackendCapabilities(has_associated_images=False),
         )
     )
     return new_registry

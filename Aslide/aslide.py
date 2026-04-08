@@ -44,11 +44,14 @@ class AssociatedImagesView(Mapping[str, Any]):
 
 
 class Slide:
-    def __init__(self, filepath: str):
+    def __init__(self, filepath: str, acquisition_id: int | None = None):
         self.filepath = filepath
+        self.acquisition_id = acquisition_id
         self.registry_entry = registry.resolve_path(filepath)
         self.format = self.registry_entry.extensions[0]
-        self._backend = self.registry_entry.create_slide(filepath)
+        self._backend = self.registry_entry.create_slide(
+            filepath, acquisition_id=acquisition_id
+        )
         self._slide_family = self._resolve_slide_family()
 
     @property
@@ -58,6 +61,12 @@ class Slide:
     @property
     def slide_family(self) -> str:
         return self._slide_family
+
+    @property
+    def qptiff_semantics(self) -> str | None:
+        if self.format.lower() != ".qptiff":
+            return None
+        return self.slide_family
 
     def _resolve_slide_family(self) -> str:
         family = cast(str, self.registry_entry.slide_family)
