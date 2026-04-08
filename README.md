@@ -37,8 +37,10 @@ ASlide supports the following whole-slide image formats:
 | Leica SCN | `.scn` | Leica Biosystems | OpenSlide |
 | MIRAX | `.mrxs` | 3DHISTECH | OpenSlide |
 | MDS | `.mds`, `.mdsx` | Motic | Native SDK |
+| MCD | `.mcd` | IMC / Fluidigm-style multiplex | `readimc` |
+| OME-like TIFF multiplex | `.tif`, `.tiff` | IMC channel exports | `tifffile` |
 | Olympus VSI | `.vsi` | Olympus | Bio-Formats |
-| QPTiff | `.qptiff` | Akoya | qptifffile |
+| QPTiff | `.qptiff` | Akoya multiplex | qptifffile |
 | SDPC | `.sdpc` | SQRAY | Native SDK |
 | TMAP | `.TMAP` | UNIC | Native SDK |
 | TRON | `.tron` | InteMedic | Native SDK |
@@ -152,6 +154,36 @@ else:
 
 # For multiplex QPTIFF, DeepZoom display defaults to DAPI and raises if DAPI is absent
 viewer = DeepZoom(slide) if slide.slide_family == 'multiplex' else None
+```
+
+### Multiplex TIFF Behavior
+
+ASlide keeps `Slide(path)` as a single-path entry point.
+
+- Opening one multiplex-style TIFF anchor file can resolve to a multiplex backend and discover compatible sibling channels from the same directory.
+- Opening a generic `.tif` or `.tiff` still behaves as a single-image read and does not trigger stitching, even when neighboring TIFF files exist.
+- Opening an `.mcd` file resolves to a multiplex backend backed by `readimc`.
+- For multi-acquisition MCD files, ASlide currently selects the largest acquisition by pixel area as the default image and exposes the selected acquisition metadata in `slide.properties`.
+- Pass `acquisition_id=<id>` to `Slide(...)` when you want a specific MCD acquisition instead of the default one.
+- Multiplex backends do not support generic `read_region()`; use `list_biomarkers()` plus `read_biomarker_region()`.
+
+```python
+from Aslide import Slide
+
+slide = Slide('path/to/channel_or_image.tiff')
+
+if slide.slide_family == 'multiplex':
+    biomarkers = slide.list_biomarkers()
+    print(biomarkers[:5])
+    print(slide.properties.get('mcd.selected-acquisition-description'))
+    region = slide.read_biomarker_region(
+        (0, 0), 0, (512, 512), biomarker=biomarkers[0]
+    )
+else:
+    region = slide.read_region((0, 0), 0, (512, 512))
+
+mcd_slide = Slide('path/to/sample.mcd', acquisition_id=2)
+print(mcd_slide.properties.get('mcd.selected-acquisition-description'))
 ```
 
 ### Advanced Usage

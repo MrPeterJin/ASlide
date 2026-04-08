@@ -65,20 +65,36 @@ def test_basic_functionality(slide_path):
 
             # 6. Read region
             print(f"\n[Read Region Test]")
-            region = slide.read_region((0, 0), 0, (512, 512))
-            print(f"  Region size: {region.size}")
-            print(f"  Image mode: {region.mode}")
-            output_path = f"test_output_{os.path.basename(slide_path)}_region.png"
-            region.save(output_path)
-            print(f"  Saved to: {output_path}")
+            if slide.slide_family == "multiplex":
+                biomarkers = slide.list_biomarkers()
+                print(f"  Biomarker count: {len(biomarkers)}")
+                print(f"  First biomarkers: {biomarkers[:5]}")
+                region = slide.read_biomarker_region(
+                    (0, 0), 0, (512, 512), biomarkers[0]
+                )
+                print(f"  Region size: {region.size}")
+                print(f"  Image mode: {region.mode}")
+                output_path = f"test_output_{os.path.basename(slide_path)}_{biomarkers[0]}_region.png"
+                region.save(output_path)
+                print(f"  Saved to: {output_path}")
+                print(
+                    f"  Selected acquisition: {slide.properties.get('mcd.selected-acquisition-description')}"
+                )
+            else:
+                region = slide.read_region((0, 0), 0, (512, 512))
+                print(f"  Region size: {region.size}")
+                print(f"  Image mode: {region.mode}")
+                output_path = f"test_output_{os.path.basename(slide_path)}_region.png"
+                region.save(output_path)
+                print(f"  Saved to: {output_path}")
 
-            # 7. Thumbnail
-            print(f"\n[Thumbnail]")
-            thumbnail = slide.get_thumbnail((500, 500))
-            print(f"  Thumbnail size: {thumbnail.size}")
-            thumb_path = f"test_output_{os.path.basename(slide_path)}_thumb.png"
-            thumbnail.save(thumb_path)
-            print(f"  Saved to: {thumb_path}")
+                # 7. Thumbnail
+                print(f"\n[Thumbnail]")
+                thumbnail = slide.get_thumbnail((500, 500))
+                print(f"  Thumbnail size: {thumbnail.size}")
+                thumb_path = f"test_output_{os.path.basename(slide_path)}_thumb.png"
+                thumbnail.save(thumb_path)
+                print(f"  Saved to: {thumb_path}")
 
             print(f"\nBasic functionality test completed")
 
@@ -127,6 +143,35 @@ def test_qptiff_biomarkers(slide_path):
                     print(f"    Saved to: {output_path}")
 
             print(f"\nQPTiff runtime classification test completed")
+
+    except Exception as e:
+        print(f"\nError: {e}")
+        import traceback
+
+        traceback.print_exc()
+
+
+def test_mcd_acquisition_selection(slide_path, acquisition_id=2):
+    print(f"\n{'=' * 80}")
+    print(f"MCD Acquisition Selection Test: {slide_path}")
+    print(f"{'=' * 80}")
+
+    try:
+        with Slide(slide_path, acquisition_id=acquisition_id) as slide:
+            if slide.format.lower() != ".mcd":
+                print(f"Skipped: Not MCD format (current: {slide.format})")
+                return
+
+            print(f"  slide_family: {slide.slide_family}")
+            print(
+                f"  selected acquisition id: {slide.properties.get('mcd.selected-acquisition-id')}"
+            )
+            print(
+                f"  selected acquisition description: {slide.properties.get('mcd.selected-acquisition-description')}"
+            )
+            print(f"  dimensions: {slide.dimensions}")
+            biomarkers = slide.list_biomarkers()
+            print(f"  first biomarkers: {biomarkers[:5]}")
 
     except Exception as e:
         print(f"\nError: {e}")
