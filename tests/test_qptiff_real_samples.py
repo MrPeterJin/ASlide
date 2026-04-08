@@ -21,6 +21,7 @@ def test_real_he_qptiff_is_classified_as_brightfield_and_supports_read_region() 
 
     with Slide(str(SAMPLE_HE_QPTIFF)) as slide:
         assert slide.slide_family == "brightfield"
+        assert slide.qptiff_semantics == "brightfield"
         region = slide.read_region((0, 0), 0, (64, 64))
         assert region.size == (64, 64)
 
@@ -42,12 +43,15 @@ def test_real_he_qptiff_supports_deepzoom_after_brightfield_classification() -> 
 def test_real_multiplex_qptiff_is_classified_as_multiplex() -> None:
     import pytest
 
-    from Aslide import Slide
+    from Aslide import DeepZoom, Slide
 
     if not SAMPLE_MULTIPLEX_QPTIFF.exists():
         pytest.skip(f"Missing sample file: {SAMPLE_MULTIPLEX_QPTIFF}")
 
     with Slide(str(SAMPLE_MULTIPLEX_QPTIFF)) as slide:
         assert slide.slide_family == "multiplex"
+        assert slide.qptiff_semantics == "multiplex"
         biomarkers = slide.list_biomarkers()
         assert "DAPI" in biomarkers
+        deepzoom = DeepZoom(slide)
+        assert deepzoom.biomarker == "DAPI"

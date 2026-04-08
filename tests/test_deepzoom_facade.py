@@ -122,6 +122,31 @@ def test_deepzoom_defaults_to_dapi_for_multiplex_slides(
     deepzoom = DeepZoom(slide)
 
     assert deepzoom.backend.biomarker == "DAPI"
+    assert deepzoom.biomarker == "DAPI"
+
+
+def test_deepzoom_exposes_selected_biomarker_for_multiplex_slides(
+    monkeypatch, fake_multiplex_backend, fake_multiplex_deepzoom_backend
+) -> None:
+    from Aslide.aslide import Slide
+    from Aslide.deepzoom import DeepZoom
+    from Aslide.registry import FormatEntry
+
+    def fake_resolve_path(path: str) -> FormatEntry:
+        return FormatEntry(
+            format_id="qptiff",
+            extensions=(".qptiff",),
+            slide_backend=fake_multiplex_backend,
+            deepzoom_backend=fake_multiplex_deepzoom_backend,
+            slide_family="multiplex",
+        )
+
+    monkeypatch.setattr("Aslide.aslide.registry.resolve_path", fake_resolve_path)
+
+    slide = Slide("demo.qptiff")
+    deepzoom = DeepZoom(slide, biomarker="CD3")
+
+    assert deepzoom.biomarker == "CD3"
 
 
 def test_deepzoom_raises_when_default_dapi_missing_for_multiplex_slides(

@@ -271,6 +271,10 @@ class QptiffSlide(AbstractSlide):
             return "brightfield"
         return "multiplex"
 
+    @property
+    def qptiff_semantics(self) -> str:
+        return self.classify_slide_family()
+
     def has_biomarker(self, name: str) -> bool:
         return name in self._biomarkers
 

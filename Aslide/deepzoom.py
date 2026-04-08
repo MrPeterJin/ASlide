@@ -49,6 +49,14 @@ class DeepZoom:
         return self._backend
 
     @property
+    def biomarker(self) -> str | None:
+        if hasattr(self.backend, "biomarker"):
+            return getattr(self.backend, "biomarker")
+        if hasattr(self.backend, "_biomarker"):
+            return getattr(self.backend, "_biomarker")
+        return None
+
+    @property
     def tile_size(self) -> int:
         return getattr(self.backend, "tile_size", 254)
 
