@@ -261,7 +261,7 @@ class CustomInstall(install):
 
 setup(
     name="Aslide",
-    version="1.6.0",
+    version="1.6.1",
     author="MrPeterJin",
     author_email="petergamsing@gmail.com",
     url="https://github.com/MrPeterJin/ASlide",
