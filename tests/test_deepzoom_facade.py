@@ -100,6 +100,74 @@ def test_deepzoom_passes_explicit_biomarker_for_multiplex_slides(
     assert deepzoom.backend.biomarker == "CD3"
 
 
+def test_deepzoom_uses_biomarker_aware_ome_tiff_backend(
+    monkeypatch,
+) -> None:
+    from PIL import Image
+
+    from Aslide.aslide import Slide
+    from Aslide.deepzoom import DeepZoom
+    from Aslide.registry import FormatEntry
+
+    class RecordingOmeBackend:
+        def __init__(self, path: str):
+            self.path = path
+            self.format_id = "ome_tiff"
+            self.dimensions = (1024, 1024)
+            self.level_count = 1
+            self.level_dimensions = ((1024, 1024),)
+            self.level_downsamples = (1.0,)
+            self.properties = {
+                "openslide.vendor": "ome-tiff",
+                "ome.channels": "CD3,DAPI",
+            }
+            self.associated_images = {}
+            self.requested_biomarkers: list[str] = []
+
+        def close(self) -> None:
+            return None
+
+        def get_best_level_for_downsample(self, downsample: float) -> int:
+            return 0
+
+        def list_biomarkers(self) -> list[str]:
+            return ["CD3", "DAPI"]
+
+        def has_biomarker(self, name: str) -> bool:
+            return name in {"CD3", "DAPI"}
+
+        def get_default_display_biomarker(self) -> str:
+            return "DAPI"
+
+        def read_biomarker_region(self, location, level, size, biomarker):
+            self.requested_biomarkers.append(biomarker)
+            return Image.new("RGBA", size, (1, 2, 3, 255))
+
+    def fake_resolve_path(path: str) -> FormatEntry:
+        return FormatEntry(
+            format_id="ome_tiff",
+            extensions=(".tif", ".tiff"),
+            slide_backend=RecordingOmeBackend,
+            deepzoom_backend=lambda: (
+                __import__(
+                    "Aslide.ome_tiff.ome_tiff_deepzoom",
+                    fromlist=["OmeTiffDeepZoomGenerator"],
+                ).OmeTiffDeepZoomGenerator
+            ),
+            slide_family="multiplex",
+        )
+
+    monkeypatch.setattr("Aslide.aslide.registry.resolve_path", fake_resolve_path)
+
+    slide = Slide("demo.ome.tif")
+    deepzoom = DeepZoom(slide, biomarker="CD3")
+
+    assert deepzoom.biomarker == "CD3"
+    tile = deepzoom.get_tile(0, (0, 0))
+    assert tile.size[0] > 0 and tile.size[1] > 0
+    assert slide.backend.requested_biomarkers == ["CD3"]
+
+
 def test_deepzoom_defaults_to_dapi_for_multiplex_slides(
     monkeypatch, fake_multiplex_backend, fake_multiplex_deepzoom_backend
 ) -> None:

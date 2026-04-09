@@ -134,6 +134,9 @@ def build_default_registry() -> FormatRegistry:
                 "Aslide.ome_tiff.ome_tiff_slide", "OmeTiffSlide"
             ),
             slide_family="multiplex",
+            deepzoom_backend=lambda: _load_attr(
+                "Aslide.ome_tiff.ome_tiff_deepzoom", "OmeTiffDeepZoomGenerator"
+            ),
             availability_check=lambda: _module_available("tifffile"),
             probe=lambda path: _load_attr(
                 "Aslide.ome_tiff.probe", "is_ome_tiff_candidate"
