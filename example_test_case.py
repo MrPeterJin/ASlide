@@ -270,7 +270,20 @@ def test_deepzoom(slide_path):
     try:
         with Slide(slide_path) as slide:
             print(f"\n[DeepZoom Initialization]")
-            dzg = DeepZoom(slide=slide, tile_size=254, overlap=1, limit_bounds=False)
+            if slide.supports_biomarkers:
+                biomarker = slide.get_default_display_biomarker()
+                dzg = DeepZoom(
+                    slide=slide,
+                    tile_size=254,
+                    overlap=1,
+                    limit_bounds=False,
+                    biomarker=biomarker,
+                )
+                print(f"  Selected biomarker: {biomarker}")
+            else:
+                dzg = DeepZoom(
+                    slide=slide, tile_size=254, overlap=1, limit_bounds=False
+                )
 
             # DeepZoom properties
             print(f"  DeepZoom level count: {dzg.level_count}")
