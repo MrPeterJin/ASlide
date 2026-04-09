@@ -25,6 +25,7 @@ class GenericTiffSlide(AbstractSlide):
         with tifffile.TiffFile(filename) as tiff:
             self._series = tiff.series[0]
             self._shape = tuple(int(value) for value in self._series.shape)
+            self._axes = self._series.axes
             self._dtype = tiff.pages[0].dtype
             self._description = str(getattr(tiff.pages[0], "description", "") or "")
 
@@ -34,7 +35,7 @@ class GenericTiffSlide(AbstractSlide):
 
     @property
     def dimensions(self) -> tuple[int, int]:
-        return (self._shape[-1], self._shape[-2])
+        return _dimensions_from_axes(self._shape, self._axes)
 
     @property
     def level_dimensions(self) -> tuple[tuple[int, int], ...]:
@@ -48,7 +49,7 @@ class GenericTiffSlide(AbstractSlide):
     def properties(self) -> dict[str, str]:
         return {
             "openslide.vendor": "tifffile",
-            "tiff.axes": self._series.axes,
+            "tiff.axes": self._axes,
             "tiff.description": self._description,
         }
 
@@ -71,14 +72,23 @@ class GenericTiffSlide(AbstractSlide):
         width, height = size
         with tifffile.TiffFile(str(self._path)) as tiff:
             data = np.asarray(tiff.asarray())
-        plane = _first_plane_2d(data)
-        region = plane[y : y + height, x : x + width]
+        image = _as_displayable_image(data, self._axes)
+        region = image[y : y + height, x : x + width]
         if region.size == 0:
-            region = np.zeros((height, width), dtype=np.uint8)
+            return Image.new("RGBA", (width, height))
+        if region.ndim == 2:
+            if region.dtype != np.uint8:
+                region = _normalize_to_uint8(region)
+            rgba = np.stack(
+                [region, region, region, np.full_like(region, 255)], axis=-1
+            )
+            return Image.fromarray(rgba, mode="RGBA")
         if region.dtype != np.uint8:
             region = _normalize_to_uint8(region)
-        rgba = np.stack([region, region, region, np.full_like(region, 255)], axis=-1)
-        return Image.fromarray(rgba, mode="RGBA")
+        if region.shape[-1] == 3:
+            alpha = np.full(region.shape[:2] + (1,), 255, dtype=np.uint8)
+            region = np.concatenate([region, alpha], axis=-1)
+        return Image.fromarray(region, mode="RGBA")
 
     def get_thumbnail(self, size: tuple[int, int]) -> Image.Image:
         image = self.read_region((0, 0), 0, self.dimensions)
@@ -86,11 +96,25 @@ class GenericTiffSlide(AbstractSlide):
         return image
 
 
-def _first_plane_2d(data: NDArray[Any]) -> NDArray[Any]:
-    plane = np.asarray(data)
-    while plane.ndim > 2:
-        plane = plane[0]
-    return plane
+def _dimensions_from_axes(shape: tuple[int, ...], axes: str) -> tuple[int, int]:
+    if "X" in axes and "Y" in axes:
+        return (shape[axes.index("X")], shape[axes.index("Y")])
+    return (shape[-1], shape[-2])
+
+
+def _as_displayable_image(data: NDArray[Any], axes: str) -> NDArray[Any]:
+    array = np.asarray(data)
+    if array.ndim == 2:
+        return array
+    if axes.endswith("YXS") and array.ndim == 3:
+        return array
+    while array.ndim > 3:
+        array = array[0]
+    if array.ndim == 3 and array.shape[0] in {3, 4} and "Y" in axes and "X" in axes:
+        array = np.moveaxis(array, 0, -1)
+    elif array.ndim == 3 and array.shape[-1] not in {3, 4}:
+        array = array[..., 0]
+    return array
 
 
 def _normalize_to_uint8(data: NDArray[Any]) -> NDArray[np.uint8]:

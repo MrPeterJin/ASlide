@@ -404,3 +404,34 @@ def test_slide_passes_acquisition_id_to_mcd_backend(monkeypatch) -> None:
 
     assert slide.backend.acquisition_id == 3
     assert slide.properties["mcd.selected-acquisition-id"] == "3"
+
+
+def test_ome_probe_does_not_promote_brightfield_like_ome_name_without_metadata(
+    monkeypatch,
+) -> None:
+    from Aslide.ome_tiff.probe import is_ome_tiff_candidate
+
+    class FakePage:
+        def __init__(self):
+            self.tags = {}
+
+    class FakeSeries:
+        def __init__(self):
+            self.shape = (2048, 2048, 3)
+            self.axes = "YXS"
+
+    class FakeTiffFile:
+        def __init__(self, path):
+            self.is_ome = False
+            self.series = [FakeSeries()]
+            self.pages = [FakePage()]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr("Aslide.ome_tiff.probe.tifffile.TiffFile", FakeTiffFile)
+
+    assert is_ome_tiff_candidate("brightfield/looks_like.ome.tif") is False

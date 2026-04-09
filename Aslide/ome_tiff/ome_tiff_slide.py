@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+import xml.etree.ElementTree as ET
 
 import numpy as np
 from PIL import Image
@@ -28,9 +29,12 @@ class OmeTiffSlide(AbstractSlide):
         self._filename = filename
         self._channels: dict[str, Path] = {}
         self._channel_order: list[str] = []
+        self._channel_indices: dict[str, int] = {}
         self._shape: tuple[int, int] = (0, 0)
         self._dtype = None
         self._mpp = None
+        self._single_file_path: Path | None = None
+        self._single_file_axes: str | None = None
         self._discover_channels(Path(filename))
 
     def _discover_channels(self, anchor_path: Path) -> None:
@@ -43,6 +47,15 @@ class OmeTiffSlide(AbstractSlide):
         self._shape = anchor_signature["shape"]
         self._dtype = anchor_signature["dtype"]
         self._mpp = anchor_signature["mpp"]
+
+        if anchor_signature["ome_channels"]:
+            self._single_file_path = anchor_path
+            self._single_file_axes = anchor_signature["axes"]
+            for index, label in enumerate(anchor_signature["ome_channels"]):
+                self._channels[label] = anchor_path
+                self._channel_order.append(label)
+                self._channel_indices[label] = index
+            return
 
         for candidate in sorted(anchor_path.parent.iterdir()):
             if not candidate.is_file():
@@ -72,6 +85,7 @@ class OmeTiffSlide(AbstractSlide):
             page = tiff.pages[0]
             page_name = page.tags.get("PageName")
             x_resolution = page.tags.get("XResolution")
+            ome_channels = _extract_ome_channel_names(tiff.ome_metadata)
             mpp = None
             if x_resolution is not None:
                 num, den = x_resolution.value
@@ -79,9 +93,11 @@ class OmeTiffSlide(AbstractSlide):
                     mpp = 25400.0 * den / num
             return {
                 "shape": tuple(int(value) for value in series.shape[-2:]),
+                "axes": series.axes,
                 "dtype": page.dtype,
                 "label": str(page_name.value) if page_name else path.stem,
                 "mpp": mpp,
+                "ome_channels": ome_channels,
             }
 
     @property
@@ -162,7 +178,14 @@ class OmeTiffSlide(AbstractSlide):
         width, height = size
         with tifffile.TiffFile(self._channels[biomarker]) as tiff:
             data = tiff.asarray()
-        region = np.asarray(data[y : y + height, x : x + width])
+        if self._single_file_path is not None and self._single_file_axes is not None:
+            channel_index = self._channel_indices[biomarker]
+            plane = _extract_channel_plane(
+                np.asarray(data), self._single_file_axes, channel_index
+            )
+        else:
+            plane = np.asarray(data)
+        region = np.asarray(plane[y : y + height, x : x + width])
         if region.size == 0:
             region = np.zeros((height, width), dtype=np.uint8)
         if region.dtype != np.uint8:
@@ -181,3 +204,29 @@ def _normalize_to_uint8(data: np.ndarray) -> np.ndarray:
         return np.zeros(data.shape, dtype=np.uint8)
     scaled = (data - minimum) / (maximum - minimum)
     return (scaled * 255).astype(np.uint8)
+
+
+def _extract_ome_channel_names(ome_metadata: str | None) -> list[str]:
+    if not ome_metadata:
+        return []
+    root = ET.fromstring(ome_metadata)
+    ns = {"ome": "http://www.openmicroscopy.org/Schemas/OME/2016-06"}
+    channels = root.findall(".//ome:Channel", ns)
+    names: list[str] = []
+    for index, channel in enumerate(channels):
+        names.append(channel.attrib.get("Name") or f"Channel {index}")
+    return names
+
+
+def _extract_channel_plane(
+    data: np.ndarray, axes: str, channel_index: int
+) -> np.ndarray:
+    array = np.asarray(data)
+    if axes == "CYX":
+        return array[channel_index]
+    if axes == "YX":
+        return array
+    if "C" in axes:
+        axis = axes.index("C")
+        return np.take(array, channel_index, axis=axis)
+    return array

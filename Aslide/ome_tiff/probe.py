@@ -9,8 +9,6 @@ def is_ome_tiff_candidate(path: str) -> bool:
     file_path = Path(path)
     if file_path.suffix.lower() not in {".tif", ".tiff"}:
         return False
-    if ".ome." in file_path.name.lower():
-        return True
 
     with tifffile.TiffFile(path) as tiff:
         if tiff.is_ome:
