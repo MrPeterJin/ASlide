@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from typing import Any
 
 import openslide
@@ -25,13 +26,19 @@ class DeepZoom:
             backend_class = OpenSlideDeepZoomGenerator
         if slide.slide_family == "multiplex":
             resolved_biomarker = biomarker or slide.get_default_display_biomarker()
-            self._backend = backend_class(
-                slide.backend,
-                tile_size,
-                overlap,
-                limit_bounds,
-                biomarker=resolved_biomarker,
-            )
+            backend_signature = inspect.signature(backend_class)
+            if "biomarker" in backend_signature.parameters:
+                self._backend = backend_class(
+                    slide.backend,
+                    tile_size,
+                    overlap,
+                    limit_bounds,
+                    biomarker=resolved_biomarker,
+                )
+            else:
+                self._backend = backend_class(
+                    slide.backend, tile_size, overlap, limit_bounds
+                )
         elif slide.format.lower() == ".qptiff" and hasattr(slide.backend, "_openslide"):
             brightfield_backend = slide.backend._openslide
             if brightfield_backend is None:

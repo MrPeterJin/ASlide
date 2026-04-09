@@ -149,6 +149,32 @@ def test_deepzoom_exposes_selected_biomarker_for_multiplex_slides(
     assert deepzoom.biomarker == "CD3"
 
 
+def test_deepzoom_falls_back_when_backend_does_not_accept_biomarker(
+    monkeypatch, fake_multiplex_backend, fake_backend_classes
+) -> None:
+    from Aslide.aslide import Slide
+    from Aslide.deepzoom import DeepZoom
+    from Aslide.registry import FormatEntry
+
+    _, fake_deepzoom_backend = fake_backend_classes
+
+    def fake_resolve_path(path: str) -> FormatEntry:
+        return FormatEntry(
+            format_id="ome_tiff",
+            extensions=(".tif",),
+            slide_backend=fake_multiplex_backend,
+            deepzoom_backend=fake_deepzoom_backend,
+            slide_family="multiplex",
+        )
+
+    monkeypatch.setattr("Aslide.aslide.registry.resolve_path", fake_resolve_path)
+
+    slide = Slide("demo.ome.tif")
+    deepzoom = DeepZoom(slide)
+
+    assert deepzoom.backend.__class__ is fake_deepzoom_backend
+
+
 def test_deepzoom_raises_when_default_dapi_missing_for_multiplex_slides(
     monkeypatch, fake_multiplex_deepzoom_backend
 ) -> None:
