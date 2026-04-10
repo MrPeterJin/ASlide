@@ -164,6 +164,23 @@ def build_default_registry() -> FormatRegistry:
     )
     new_registry.register(
         FormatEntry(
+            format_id="hdf5",
+            extensions=(".h5", ".hdf5", ".h5ad"),
+            slide_backend=lambda: _load_attr("Aslide.hdf5_family", "Hdf5Slide"),
+            slide_family="multiplex",
+            availability_check=lambda: _module_available("h5py"),
+            probe=lambda path: _load_attr(
+                "Aslide.hdf5_family", "is_hdf5_multiplex_candidate"
+            )(path),
+            capabilities=BackendCapabilities(
+                has_associated_images=False,
+                supports_biomarkers=True,
+                requires_explicit_channel_read=True,
+            ),
+        )
+    )
+    new_registry.register(
+        FormatEntry(
             format_id="qptiff",
             extensions=(".qptiff",),
             slide_backend=lambda: _load_attr(

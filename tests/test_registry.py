@@ -145,3 +145,34 @@ def test_default_registry_exposes_mcd_entry() -> None:
 
     assert entry.slide_family == "multiplex"
     assert ".mcd" in entry.extensions
+
+
+def test_default_registry_exposes_hdf5_entry() -> None:
+    from Aslide.registry import registry
+
+    entry = registry.get("hdf5")
+
+    assert entry.slide_family == "multiplex"
+    assert entry.capabilities.supports_biomarkers is True
+    assert ".h5" in entry.extensions
+    assert ".hdf5" in entry.extensions
+    assert ".h5ad" in entry.extensions
+
+
+def test_registry_prefers_hdf5_probe_for_h5ad(fake_multiplex_backend) -> None:
+    from Aslide.registry import FormatEntry, FormatRegistry
+
+    registry = FormatRegistry()
+    registry.register(
+        FormatEntry(
+            format_id="hdf5",
+            extensions=(".h5", ".hdf5", ".h5ad"),
+            slide_backend=fake_multiplex_backend,
+            slide_family="multiplex",
+            probe=lambda path: path.endswith("supported.h5ad"),
+        )
+    )
+
+    resolved = registry.resolve_path("demo.supported.h5ad")
+
+    assert resolved.format_id == "hdf5"

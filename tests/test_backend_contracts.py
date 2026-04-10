@@ -54,3 +54,13 @@ def test_registry_exposes_ome_and_mcd_multiplex_capabilities() -> None:
     assert mcd_entry.slide_family == "multiplex"
     assert mcd_entry.capabilities.supports_biomarkers is True
     assert mcd_entry.capabilities.requires_explicit_channel_read is True
+
+
+def test_registry_exposes_hdf5_multiplex_capabilities() -> None:
+    from Aslide.registry import registry
+
+    entry = registry.get("hdf5")
+
+    assert entry.slide_family == "multiplex"
+    assert entry.capabilities.supports_biomarkers is True
+    assert entry.capabilities.requires_explicit_channel_read is True
