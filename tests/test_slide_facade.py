@@ -305,6 +305,58 @@ def test_slide_treats_mcd_as_multiplex(monkeypatch, fake_mcd_backend) -> None:
         slide.read_region((0, 0), 0, (8, 8))
 
 
+def test_slide_treats_hdf5_family_as_multiplex(
+    monkeypatch, fake_multiplex_backend
+) -> None:
+    import pytest
+
+    from Aslide.aslide import Slide
+    from Aslide.registry import FormatEntry
+
+    def fake_resolve_path(path: str) -> FormatEntry:
+        return FormatEntry(
+            format_id="hdf5",
+            extensions=(".h5", ".hdf5", ".h5ad"),
+            slide_backend=fake_multiplex_backend,
+            slide_family="multiplex",
+        )
+
+    monkeypatch.setattr("Aslide.aslide.registry.resolve_path", fake_resolve_path)
+
+    slide = Slide("demo.hdf5")
+
+    assert slide.slide_family == "multiplex"
+    assert slide.list_biomarkers() == ["DAPI", "CD3"]
+    with pytest.raises(Exception, match="biomarker|multiplex|channel"):
+        slide.read_region((0, 0), 0, (8, 8))
+
+
+def test_slide_exposes_hdf5_biomarker_reads(
+    monkeypatch, fake_multiplex_backend
+) -> None:
+    from Aslide.aslide import Slide
+    from Aslide.registry import FormatEntry
+
+    def fake_resolve_path(path: str) -> FormatEntry:
+        return FormatEntry(
+            format_id="hdf5",
+            extensions=(".h5", ".hdf5", ".h5ad"),
+            slide_backend=fake_multiplex_backend,
+            slide_family="multiplex",
+        )
+
+    monkeypatch.setattr("Aslide.aslide.registry.resolve_path", fake_resolve_path)
+
+    slide = Slide("demo.h5ad")
+
+    assert slide.read_biomarker_region((1, 2), 0, (3, 4), biomarker="DAPI") == (
+        (1, 2),
+        0,
+        (3, 4),
+        "DAPI",
+    )
+
+
 def test_mcd_backend_prefers_largest_acquisition_and_exposes_metadata(
     monkeypatch,
 ) -> None:

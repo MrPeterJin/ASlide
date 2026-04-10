@@ -21,6 +21,9 @@ SAMPLE_HE_TIF = Path(
 SAMPLE_STANDARD_OME = Path(
     "/jhcnas2/Spatial_Proteomics/Raw_Data/SP-OtherAtlas/HTAN/Breast_Pre-Cancer_Atlas/MIBI/Point2201_31610.ome.tif"
 )
+SAMPLE_HDF5 = Path(
+    "/jhcnas2/Spatial_Proteomics/Raw_Data/SP-VirTues/6metabolomics-protein/scSpaMet_submission_data/08_scSpaMet_submission_data/Processed/IMC/L11.hdf5"
+)
 
 
 def test_real_ome_anchor_is_classified_as_multiplex_and_discovers_channels() -> None:
@@ -120,3 +123,30 @@ def test_real_mcd_supports_explicit_acquisition_selection() -> None:
         assert slide.properties["mcd.selected-acquisition-id"] == "2"
         assert slide.properties["mcd.selected-acquisition-description"] == "ROI_002"
         assert slide.dimensions == (1500, 1250)
+
+
+def test_real_hdf5_family_is_classified_as_multiplex() -> None:
+    import pytest
+
+    from Aslide import Slide
+
+    if not SAMPLE_HDF5.exists():
+        pytest.skip(f"Missing sample file: {SAMPLE_HDF5}")
+
+    with Slide(str(SAMPLE_HDF5)) as slide:
+        assert slide.slide_family == "multiplex"
+        assert "SMA" in slide.list_biomarkers()
+        assert "CD3" in slide.list_biomarkers()
+
+
+def test_real_hdf5_family_supports_biomarker_reads() -> None:
+    import pytest
+
+    from Aslide import Slide
+
+    if not SAMPLE_HDF5.exists():
+        pytest.skip(f"Missing sample file: {SAMPLE_HDF5}")
+
+    with Slide(str(SAMPLE_HDF5)) as slide:
+        region = slide.read_biomarker_region((0, 0), 0, (32, 24), "CD3")
+        assert region.size == (32, 24)
