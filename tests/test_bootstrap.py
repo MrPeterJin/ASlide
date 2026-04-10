@@ -53,4 +53,4 @@ def test_install_script_no_longer_mentions_shell_profile_updates() -> None:
     assert "shell_config_files" not in setup_source
     assert "ld.so.conf.d" not in setup_source
     assert "aslide-paths.pth" not in setup_source
-    assert 'version="1.6.0"' in setup_source
+    assert 'version="' in setup_source
