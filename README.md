@@ -37,6 +37,8 @@ ASlide supports the following whole-slide image formats:
 | Leica SCN | `.scn` | Leica Biosystems | OpenSlide |
 | MIRAX | `.mrxs` | 3DHISTECH | OpenSlide |
 | MDS | `.mds`, `.mdsx` | Motic | Native SDK |
+| HDF5 multiplex | `.h5`, `.hdf5` | Image-backed multiplex raster containers | `h5py` |
+| H5AD multiplex (image-backed subset) | `.h5ad` | AnnData containers with embedded `C x H x W` raster data | `h5py` |
 | MCD | `.mcd` | IMC / Fluidigm-style multiplex | `readimc` |
 | OME-like TIFF multiplex | `.tif`, `.tiff` | IMC channel exports | `tifffile` |
 | Olympus VSI | `.vsi` | Olympus | Bio-Formats |
@@ -161,10 +163,13 @@ ASlide keeps `Slide(path)` as a single-path entry point.
 
 - Opening one multiplex-style TIFF anchor file can resolve to a multiplex backend and discover compatible sibling channels from the same directory.
 - Opening a generic `.tif` or `.tiff` still behaves as a single-image read and does not trigger stitching, even when neighboring TIFF files exist.
+- Opening an image-backed `.h5`, `.hdf5`, or `.h5ad` file can resolve to a multiplex backend when the container exposes a direct `channel x height x width` raster plus marker metadata.
+- Table-only AnnData `.h5ad` files remain unsupported; ASlide does not reconstruct slide images from `obs`/`var`/`X`/spatial tables in this path.
 - Opening an `.mcd` file resolves to a multiplex backend backed by `readimc`.
 - For multi-acquisition MCD files, ASlide currently selects the largest acquisition by pixel area as the default image and exposes the selected acquisition metadata in `slide.properties`.
 - Pass `acquisition_id=<id>` to `Slide(...)` when you want a specific MCD acquisition instead of the default one.
 - Multiplex backends do not support generic `read_region()`; use `list_biomarkers()` plus `read_biomarker_region()`.
+- Multiplex DeepZoom behaves the same for HDF5-family inputs as for TIFF/QPTIFF/MCD inputs: pass `biomarker=...` explicitly, or let ASlide choose the default display biomarker.
 
 ```python
 from Aslide import Slide
@@ -183,6 +188,10 @@ else:
 
 mcd_slide = Slide('path/to/sample.mcd', acquisition_id=2)
 print(mcd_slide.properties.get('mcd.selected-acquisition-description'))
+
+hdf5_slide = Slide('path/to/sample.hdf5')
+viewer = DeepZoom(hdf5_slide, biomarker='CD3')
+tile = viewer.get_tile(0, (0, 0))
 ```
 
 ### Advanced Usage
