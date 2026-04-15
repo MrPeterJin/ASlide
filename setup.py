@@ -294,7 +294,7 @@ setup(
     cmdclass={"install": CustomInstall},
     platforms="linux",
     install_requires=[
-        "numpy",
+        "numpy<2",
         "Pillow",
         "h5py",
         "openslide-bin",

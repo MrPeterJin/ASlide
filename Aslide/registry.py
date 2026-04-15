@@ -181,6 +181,27 @@ def build_default_registry() -> FormatRegistry:
     )
     new_registry.register(
         FormatEntry(
+            format_id="ims",
+            extensions=(".ims",),
+            slide_backend=lambda: _load_attr("Aslide.ims.ims_slide", "ImsSlide"),
+            slide_family="multiplex",
+            deepzoom_backend=lambda: _load_attr(
+                "Aslide.ims.ims_deepzoom", "ImsDeepZoomGenerator"
+            ),
+            availability_check=lambda: _module_available("h5py"),
+            probe=lambda path: _load_attr("Aslide.ims.ims_slide", "is_ims_candidate")(
+                path
+            ),
+            capabilities=BackendCapabilities(
+                has_associated_images=False,
+                has_deepzoom=True,
+                supports_biomarkers=True,
+                requires_explicit_channel_read=True,
+            ),
+        )
+    )
+    new_registry.register(
+        FormatEntry(
             format_id="qptiff",
             extensions=(".qptiff",),
             slide_backend=lambda: _load_attr(
