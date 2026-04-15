@@ -39,6 +39,7 @@ ASlide supports the following whole-slide image formats:
 | MDS | `.mds`, `.mdsx` | Motic | Native SDK |
 | HDF5 multiplex | `.h5`, `.hdf5` | Image-backed multiplex raster containers | `h5py` |
 | H5AD multiplex (image-backed subset) | `.h5ad` | AnnData containers with embedded `C x H x W` raster data | `h5py` |
+| IMS multiplex | `.ims` | Imaris / IBEX multiplex pyramids | `h5py` |
 | MCD | `.mcd` | IMC / Fluidigm-style multiplex | `readimc` |
 | OME-like TIFF multiplex | `.tif`, `.tiff` | IMC channel exports | `tifffile` |
 | Olympus VSI | `.vsi` | Olympus | Bio-Formats |
@@ -76,10 +77,12 @@ pip install git+https://github.com/MrPeterJin/ASlide.git
 ```
 
 The installation script will automatically:
-- Install required Python packages (numpy, Pillow, openslide-python, qptifffile, tifffile, pyisyntax)
+- Install required Python packages (including `numpy<2`, `h5py`, `openslide-python`, `qptifffile`, `tifffile`, `readimc`, and `pyisyntax`)
 - Bundle OpenCV 3.4.2 and all dependencies
 - Copy vendor-specific shared libraries to the appropriate locations
 - Create optional helper scripts for backends that still need runtime environment setup
+
+For multiplex readers that rely on `h5py`, keep `numpy` in the `<2` range. This avoids ABI mismatches with compiled scientific dependencies in fresh environments.
 
 ### Post-Installation Setup
 
@@ -164,12 +167,13 @@ ASlide keeps `Slide(path)` as a single-path entry point.
 - Opening one multiplex-style TIFF anchor file can resolve to a multiplex backend and discover compatible sibling channels from the same directory.
 - Opening a generic `.tif` or `.tiff` still behaves as a single-image read and does not trigger stitching, even when neighboring TIFF files exist.
 - Opening an image-backed `.h5`, `.hdf5`, or `.h5ad` file can resolve to a multiplex backend when the container exposes a direct `channel x height x width` raster plus marker metadata.
+- Opening an `.ims` file resolves to a dedicated multiplex backend that reads channel metadata and pyramid levels directly from the IMS container.
 - Table-only AnnData `.h5ad` files remain unsupported; ASlide does not reconstruct slide images from `obs`/`var`/`X`/spatial tables in this path.
 - Opening an `.mcd` file resolves to a multiplex backend backed by `readimc`.
 - For multi-acquisition MCD files, ASlide currently selects the largest acquisition by pixel area as the default image and exposes the selected acquisition metadata in `slide.properties`.
 - Pass `acquisition_id=<id>` to `Slide(...)` when you want a specific MCD acquisition instead of the default one.
 - Multiplex backends do not support generic `read_region()`; use `list_biomarkers()` plus `read_biomarker_region()`.
-- Multiplex DeepZoom behaves the same for HDF5-family inputs as for TIFF/QPTIFF/MCD inputs: pass `biomarker=...` explicitly, or let ASlide choose the default display biomarker.
+- Multiplex DeepZoom behaves the same for HDF5-family and IMS inputs as for TIFF/QPTIFF/MCD inputs: pass `biomarker=...` explicitly, or let ASlide choose the default display biomarker.
 
 ```python
 from Aslide import Slide
@@ -192,6 +196,15 @@ print(mcd_slide.properties.get('mcd.selected-acquisition-description'))
 hdf5_slide = Slide('path/to/sample.hdf5')
 viewer = DeepZoom(hdf5_slide, biomarker='CD3')
 tile = viewer.get_tile(0, (0, 0))
+
+ims_slide = Slide('path/to/sample.ims')
+print(ims_slide.list_biomarkers()[:5])
+default_biomarker = ims_slide.get_default_display_biomarker()
+ims_region = ims_slide.read_biomarker_region(
+    (0, 0), 0, (512, 512), biomarker=default_biomarker
+)
+ims_viewer = DeepZoom(ims_slide)
+ims_tile = ims_viewer.get_tile(0, (0, 0))
 ```
 
 ### Advanced Usage
