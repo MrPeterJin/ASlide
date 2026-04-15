@@ -64,3 +64,13 @@ def test_registry_exposes_hdf5_multiplex_capabilities() -> None:
     assert entry.slide_family == "multiplex"
     assert entry.capabilities.supports_biomarkers is True
     assert entry.capabilities.requires_explicit_channel_read is True
+
+
+def test_registry_exposes_ims_multiplex_capabilities() -> None:
+    from Aslide.registry import registry
+
+    entry = registry.get("ims")
+
+    assert entry.slide_family == "multiplex"
+    assert entry.capabilities.supports_biomarkers is True
+    assert entry.capabilities.requires_explicit_channel_read is True

@@ -259,6 +259,34 @@ def test_slide_treats_ome_tiff_as_multiplex_and_exposes_biomarkers(
     assert slide.list_biomarkers() == ["SMA", "CD3", "DAPI"]
 
 
+def test_slide_treats_ims_as_multiplex_and_exposes_biomarkers(
+    monkeypatch, fake_multiplex_backend
+) -> None:
+    from Aslide.aslide import Slide
+    from Aslide.registry import FormatEntry
+
+    def fake_resolve_path(path: str) -> FormatEntry:
+        return FormatEntry(
+            format_id="ims",
+            extensions=(".ims",),
+            slide_backend=fake_multiplex_backend,
+            slide_family="multiplex",
+        )
+
+    monkeypatch.setattr("Aslide.aslide.registry.resolve_path", fake_resolve_path)
+
+    slide = Slide("sample.ims")
+
+    assert slide.slide_family == "multiplex"
+    assert slide.list_biomarkers() == ["DAPI", "CD3"]
+    assert slide.read_biomarker_region((1, 2), 0, (3, 4), biomarker="CD3") == (
+        (1, 2),
+        0,
+        (3, 4),
+        "CD3",
+    )
+
+
 def test_slide_keeps_generic_tiff_as_brightfield_single_image(
     monkeypatch, fake_generic_tiff_backend
 ) -> None:

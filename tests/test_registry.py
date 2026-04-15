@@ -159,6 +159,17 @@ def test_default_registry_exposes_hdf5_entry() -> None:
     assert ".h5ad" in entry.extensions
 
 
+def test_default_registry_exposes_ims_entry() -> None:
+    from Aslide.registry import registry
+
+    entry = registry.get("ims")
+
+    assert entry.slide_family == "multiplex"
+    assert entry.capabilities.supports_biomarkers is True
+    assert entry.capabilities.requires_explicit_channel_read is True
+    assert ".ims" in entry.extensions
+
+
 def test_registry_prefers_hdf5_probe_for_h5ad(fake_multiplex_backend) -> None:
     from Aslide.registry import FormatEntry, FormatRegistry
 

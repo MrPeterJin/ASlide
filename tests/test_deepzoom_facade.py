@@ -322,3 +322,29 @@ def test_deepzoom_passes_biomarker_for_hdf5_family_multiplex_slides(
 
     assert deepzoom.backend.biomarker == "CD3"
     assert deepzoom.biomarker == "CD3"
+
+
+def test_deepzoom_defaults_and_fetches_tile_for_ims_multiplex_slides(
+    monkeypatch, fake_multiplex_backend, fake_multiplex_deepzoom_backend
+) -> None:
+    from Aslide.aslide import Slide
+    from Aslide.deepzoom import DeepZoom
+    from Aslide.registry import FormatEntry
+
+    def fake_resolve_path(path: str) -> FormatEntry:
+        return FormatEntry(
+            format_id="ims",
+            extensions=(".ims",),
+            slide_backend=fake_multiplex_backend,
+            deepzoom_backend=fake_multiplex_deepzoom_backend,
+            slide_family="multiplex",
+        )
+
+    monkeypatch.setattr("Aslide.aslide.registry.resolve_path", fake_resolve_path)
+
+    slide = Slide("demo.ims")
+    deepzoom = DeepZoom(slide)
+
+    assert deepzoom.backend.biomarker == "DAPI"
+    assert deepzoom.biomarker == "DAPI"
+    assert deepzoom.get_tile(1, (0, 0)) == (1, (0, 0))
