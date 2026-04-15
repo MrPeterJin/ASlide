@@ -344,6 +344,10 @@ ASlide builds upon and integrates several excellent open-source projects:
 - [**WSI-SDK**](https://github.com/yasohasakii/WSI-SDK) - Whole-slide image SDK
 - [**Bio-Formats**](https://github.com/ome/bioformats) - Java library for reading life sciences image formats
 - [**vsi2tif**](https://github.com/andreped/vsi2tif) - VSI format conversion tools
+- [**h5py**](https://github.com/h5py/h5py) - HDF5 bindings used for image-backed HDF5, H5AD, and IMS multiplex readers
+- [**tifffile**](https://github.com/cgohlke/tifffile) - TIFF and OME-TIFF parsing for generic and multiplex TIFF support
+- [**qptifffile**](https://github.com/okunator/qptifffile) - Akoya QPTIFF reader used for multiplex QPTIFF support
+- [**readimc**](https://github.com/BodenmillerGroup/readimc) - IMC / MCD reader used for multiplex acquisition support
 - [**pyisyntax**](https://github.com/anibali/pyisyntax) - Python library for reading Philips iSyntax images
 - [**olefile**](https://github.com/decalage2/olefile) - Python library for parsing OLE2 files
 
