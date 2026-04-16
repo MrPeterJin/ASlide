@@ -23,11 +23,14 @@
 
 ASlide supports the following whole-slide image formats:
 
+Formats backed by Bio-Formats, including `.czi` and `.vsi`, require the optional `bioformats` extra described in the installation section below.
+
 | Format | Extension | Vendor/Source | Backend |
 |--------|-----------|---------------|---------|
 | Aperio SVS | `.svs`, `.svslide` | Leica Biosystems | OpenSlide |
 | DYJ | `.dyj` | DPT | Native SDK |
 | DYQX | `.dyqx` | SQRAY | Native SDK |
+| Zeiss CZI | `.czi` | Zeiss | Bio-Formats (`bioformats` extra) |
 | Generic TIFF | `.tif`, `.tiff` | Various | OpenSlide |
 | Hamamatsu NDPI | `.ndpi` | Hamamatsu | OpenSlide |
 | Hamamatsu VMS/VMU | `.vms`, `.vmu` | Hamamatsu | OpenSlide |
@@ -42,7 +45,7 @@ ASlide supports the following whole-slide image formats:
 | IMS multiplex | `.ims` | Imaris / IBEX multiplex pyramids | `h5py` |
 | MCD | `.mcd` | IMC / Fluidigm-style multiplex | `readimc` |
 | OME-like TIFF multiplex | `.tif`, `.tiff` | IMC channel exports | `tifffile` |
-| Olympus VSI | `.vsi` | Olympus | Bio-Formats |
+| Olympus VSI | `.vsi` | Olympus | Bio-Formats (`bioformats` extra) |
 | QPTiff | `.qptiff` | Akoya multiplex | qptifffile |
 | SDPC | `.sdpc` | SQRAY | Native SDK |
 | TMAP | `.TMAP` | UNIC | Native SDK |
@@ -66,7 +69,7 @@ ASlide supports the following whole-slide image formats:
 git clone https://github.com/MrPeterJin/ASlide.git
 cd ASlide
 
-# Install the package (dependencies will be installed automatically)
+# Install the base package
 python setup.py install
 ```
 
@@ -76,13 +79,27 @@ or use the following one-liner:
 pip install git+https://github.com/MrPeterJin/ASlide.git
 ```
 
+If you need Bio-Formats-backed readers such as `.vsi` or `.czi`, install the optional extra instead:
+
+```bash
+pip install 'git+https://github.com/MrPeterJin/ASlide.git#egg=Aslide[bioformats]'
+```
+
 The installation script will automatically:
-- Install required Python packages (including `numpy<2`, `h5py`, `openslide-python`, `qptifffile`, `tifffile`, `readimc`, and `pyisyntax`)
+- Install required Python packages for the base package (including `numpy<2`, `h5py`, `openslide-python`, `qptifffile`, `tifffile`, `readimc`, and `pyisyntax`)
 - Bundle OpenCV 3.4.2 and all dependencies
 - Copy vendor-specific shared libraries to the appropriate locations
 - Create optional helper scripts for backends that still need runtime environment setup
 
 For multiplex readers that rely on `h5py`, keep `numpy` in the `<2` range. This avoids ABI mismatches with compiled scientific dependencies in fresh environments.
+
+Bio-Formats-backed formats require additional optional dependencies and a working Java runtime:
+
+- `python-bioformats`
+- `python-javabridge`
+- Java 11+ available on `PATH` or exposed through `JAVA_HOME`
+
+Keeping Bio-Formats support optional makes the default ASlide installation much more reliable on systems that do not need `.vsi` or `.czi` support.
 
 ### Post-Installation Setup
 
@@ -158,6 +175,32 @@ else:
 
 # For multiplex QPTIFF, DeepZoom display defaults to DAPI and raises if DAPI is absent
 viewer = DeepZoom(slide) if slide.slide_family == 'multiplex' else None
+```
+
+### CZI Runtime Classification
+
+CZI files are also classified at runtime. ASlide opens `.czi` through the optional Bio-Formats-backed reader path and resolves each file to either `brightfield` or `multiplex` based on the slide content.
+
+Before opening `.czi` files, make sure you installed the optional Bio-Formats extra and have Java available:
+
+```bash
+pip install 'git+https://github.com/MrPeterJin/ASlide.git#egg=Aslide[bioformats]'
+export JAVA_HOME=/path/to/your/jdk
+```
+
+- Brightfield CZI behaves like a standard slide, so `read_region()` is the normal read path.
+- Multiplex CZI requires biomarker-aware reads, so use `list_biomarkers()` and `read_biomarker_region()` instead of generic `read_region()`.
+
+```python
+from Aslide import Slide
+
+slide = Slide('path/to/sample.czi')
+
+if slide.slide_family == 'brightfield':
+    region = slide.read_region((0, 0), 0, (512, 512))
+else:
+    biomarkers = slide.list_biomarkers()
+    region = slide.read_biomarker_region((0, 0), 0, (512, 512), biomarker=biomarkers[0])
 ```
 
 ### Multiplex TIFF Behavior

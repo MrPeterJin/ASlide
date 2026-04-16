@@ -261,7 +261,7 @@ class CustomInstall(install):
 
 setup(
     name="Aslide",
-    version="1.6.2",
+    version="1.6.3",
     author="MrPeterJin",
     author_email="petergamsing@gmail.com",
     url="https://github.com/MrPeterJin/ASlide",
@@ -307,6 +307,12 @@ setup(
         "pyisyntax",
         "olefile",
     ],
+    extras_require={
+        "bioformats": [
+            "python-bioformats",
+            "python-javabridge",
+        ],
+    },
     python_requires=">=3.10",
     classifiers=[
         "Development Status :: 4 - Beta",
