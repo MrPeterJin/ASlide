@@ -7,6 +7,9 @@ from .errors import MissingDefaultBiomarkerError, UnsupportedOperationError
 from .registry import registry
 
 
+RUNTIME_CLASSIFIED_FAMILIES = {"qptiff", "czi"}
+
+
 class AssociatedImagesView(Mapping[str, Any]):
     def __init__(self, backend_images: Any, thumbnail_factory: Any) -> None:
         self._backend_images = backend_images
@@ -70,12 +73,15 @@ class Slide:
 
     def _resolve_slide_family(self) -> str:
         family = cast(str, self.registry_entry.slide_family)
-        if family != "qptiff":
+        if family not in RUNTIME_CLASSIFIED_FAMILIES:
             return family
 
         classify = getattr(self.backend, "classify_slide_family", None)
         if callable(classify):
             return cast(str, classify())
+
+        if family != "qptiff":
+            return family
 
         markers = None
         list_markers = getattr(self.backend, "list_biomarkers", None)
@@ -93,6 +99,12 @@ class Slide:
         if len(normalized) == 1 and normalized[0] in {"h&e", "he"}:
             return "brightfield"
         return "multiplex"
+
+    def classify_slide_family(self) -> str:
+        classifier = getattr(self.backend, "classify_slide_family", None)
+        if callable(classifier):
+            return cast(str, classifier())
+        return self._slide_family
 
     @property
     def supports_biomarkers(self) -> bool:

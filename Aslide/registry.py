@@ -128,6 +128,22 @@ def build_default_registry() -> FormatRegistry:
 
     new_registry.register(
         FormatEntry(
+            format_id="czi",
+            extensions=(".czi",),
+            slide_backend=lambda: _load_attr("Aslide.czi.czi_slide", "CziSlide"),
+            slide_family="czi",
+            availability_check=lambda: (
+                _module_available("bioformats") and _module_available("javabridge")
+            ),
+            capabilities=BackendCapabilities(
+                has_associated_images=False,
+                supports_biomarkers=False,
+                requires_explicit_channel_read=False,
+            ),
+        )
+    )
+    new_registry.register(
+        FormatEntry(
             format_id="ome_tiff",
             extensions=(".tif", ".tiff"),
             slide_backend=lambda: _load_attr(

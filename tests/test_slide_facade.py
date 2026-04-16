@@ -237,6 +237,29 @@ def test_slide_exposes_qptiff_semantics_for_multiplex_qptiff(
     assert slide.qptiff_semantics == "multiplex"
 
 
+def test_slide_uses_backend_classify_slide_family_for_czi(
+    monkeypatch, fake_czi_backend
+) -> None:
+    from Aslide.aslide import Slide
+    from Aslide.registry import FormatEntry
+
+    def fake_resolve_path(path: str) -> FormatEntry:
+        return FormatEntry(
+            format_id="czi",
+            extensions=(".czi",),
+            slide_backend=fake_czi_backend,
+            slide_family="czi",
+        )
+
+    monkeypatch.setattr("Aslide.aslide.registry.resolve_path", fake_resolve_path)
+
+    slide = Slide("demo.czi")
+
+    assert slide.slide_family == "multiplex"
+    assert slide.classify_slide_family() == "multiplex"
+    assert slide.format == ".czi"
+
+
 def test_slide_treats_ome_tiff_as_multiplex_and_exposes_biomarkers(
     monkeypatch, fake_ome_multiplex_backend
 ) -> None:

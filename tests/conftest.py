@@ -290,3 +290,20 @@ class FakeHeQptiffBackend:
 @pytest.fixture
 def fake_he_qptiff_backend() -> type[FakeHeQptiffBackend]:
     return FakeHeQptiffBackend
+
+
+@dataclass
+class FakeCziBackend(FakeSlideBackend):
+    format_id: str = "czi"
+    properties: dict[str, str] = field(
+        default_factory=lambda: {"vendor": "fake-czi", "format": "czi"}
+    )
+    slide_family: str = "czi"
+
+    def classify_slide_family(self) -> str:
+        return "multiplex"
+
+
+@pytest.fixture
+def fake_czi_backend() -> type[FakeCziBackend]:
+    return FakeCziBackend

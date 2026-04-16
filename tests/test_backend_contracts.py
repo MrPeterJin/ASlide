@@ -74,3 +74,29 @@ def test_registry_exposes_ims_multiplex_capabilities() -> None:
     assert entry.slide_family == "multiplex"
     assert entry.capabilities.supports_biomarkers is True
     assert entry.capabilities.requires_explicit_channel_read is True
+
+
+def test_registry_exposes_czi_neutral_runtime_classification() -> None:
+    from Aslide.registry import registry
+
+    entry = registry.get("czi")
+
+    assert entry.slide_family == "czi"
+    assert entry.capabilities.supports_biomarkers is False
+    assert entry.capabilities.requires_explicit_channel_read is False
+
+
+def test_registry_czi_availability_depends_on_bioformats_and_javabridge(
+    monkeypatch,
+) -> None:
+    from Aslide.registry import registry
+
+    registry_module = importlib.import_module("Aslide.registry")
+
+    entry = registry.get("czi")
+
+    monkeypatch.setattr(registry_module, "_module_available", lambda module: False)
+    assert entry.is_available() is False
+
+    monkeypatch.setattr(registry_module, "_module_available", lambda module: True)
+    assert entry.is_available() is True

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import importlib
+
 import pytest
 
 
@@ -168,6 +170,31 @@ def test_default_registry_exposes_ims_entry() -> None:
     assert entry.capabilities.supports_biomarkers is True
     assert entry.capabilities.requires_explicit_channel_read is True
     assert ".ims" in entry.extensions
+
+
+def test_default_registry_exposes_czi_entry() -> None:
+    from Aslide.registry import registry
+
+    entry = registry.get("czi")
+
+    assert entry.slide_family == "czi"
+    assert entry.capabilities.supports_biomarkers is False
+    assert entry.capabilities.requires_explicit_channel_read is False
+    assert ".czi" in entry.extensions
+
+
+def test_default_registry_czi_entry_tracks_bioformats_dependency(monkeypatch) -> None:
+    from Aslide.registry import registry
+
+    registry_module = importlib.import_module("Aslide.registry")
+
+    entry = registry.get("czi")
+
+    monkeypatch.setattr(registry_module, "_module_available", lambda module: False)
+    assert entry.is_available() is False
+
+    monkeypatch.setattr(registry_module, "_module_available", lambda module: True)
+    assert entry.is_available() is True
 
 
 def test_registry_prefers_hdf5_probe_for_h5ad(fake_multiplex_backend) -> None:
