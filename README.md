@@ -23,14 +23,14 @@
 
 ASlide supports the following whole-slide image formats:
 
-Formats backed by Bio-Formats, including `.czi` and `.vsi`, require the optional `bioformats` extra described in the installation section below.
+Formats backed by optional readers require their matching extras. `.vsi` uses the `bioformats` extra. `.czi` can use either the `bioformats` extra or the lightweight `czi` extra.
 
 | Format | Extension | Vendor/Source | Backend |
 |--------|-----------|---------------|---------|
 | Aperio SVS | `.svs`, `.svslide` | Leica Biosystems | OpenSlide |
 | DYJ | `.dyj` | DPT | Native SDK |
 | DYQX | `.dyqx` | SQRAY | Native SDK |
-| Zeiss CZI | `.czi` | Zeiss | Bio-Formats (`bioformats` extra) |
+| Zeiss CZI | `.czi` | Zeiss | Bio-Formats (`bioformats` extra) or czifile (`czi` extra) |
 | Generic TIFF | `.tif`, `.tiff` | Various | OpenSlide |
 | Hamamatsu NDPI | `.ndpi` | Hamamatsu | OpenSlide |
 | Hamamatsu VMS/VMU | `.vms`, `.vmu` | Hamamatsu | OpenSlide |
@@ -79,10 +79,16 @@ or use the following one-liner:
 pip install git+https://github.com/MrPeterJin/ASlide.git
 ```
 
-If you need Bio-Formats-backed readers such as `.vsi` or `.czi`, install the optional extra instead:
+If you need Bio-Formats-backed readers such as `.vsi`, install the optional extra instead:
 
 ```bash
 pip install 'git+https://github.com/MrPeterJin/ASlide.git#egg=Aslide[bioformats]'
+```
+
+If you only need `.czi` support and want the lighter fallback reader path, install the dedicated CZI extra instead:
+
+```bash
+pip install 'git+https://github.com/MrPeterJin/ASlide.git#egg=Aslide[czi]'
 ```
 
 The installation script will automatically:
@@ -99,7 +105,7 @@ Bio-Formats-backed formats require additional optional dependencies and a workin
 - `python-javabridge`
 - Java 11+ available on `PATH` or exposed through `JAVA_HOME`
 
-Keeping Bio-Formats support optional makes the default ASlide installation much more reliable on systems that do not need `.vsi` or `.czi` support.
+Keeping Bio-Formats support optional makes the default ASlide installation much more reliable on systems that do not need `.vsi` support or the Bio-Formats CZI path. The lightweight `czi` extra avoids the Java runtime requirement when the fallback reader is sufficient.
 
 ### Post-Installation Setup
 
@@ -179,13 +185,17 @@ viewer = DeepZoom(slide) if slide.slide_family == 'multiplex' else None
 
 ### CZI Runtime Classification
 
-CZI files are also classified at runtime. ASlide opens `.czi` through the optional Bio-Formats-backed reader path and resolves each file to either `brightfield` or `multiplex` based on the slide content.
+CZI files are also classified at runtime. ASlide first tries the optional Bio-Formats-backed reader path, then falls back to `czifile` for files that Bio-Formats cannot initialize.
 
-Before opening `.czi` files, make sure you installed the optional Bio-Formats extra and have Java available:
+Before opening `.czi` files, install one of the optional extras below:
 
 ```bash
+# Full Bio-Formats path (requires Java)
 pip install 'git+https://github.com/MrPeterJin/ASlide.git#egg=Aslide[bioformats]'
 export JAVA_HOME=/path/to/your/jdk
+
+# Lightweight CZI-only fallback path
+pip install 'git+https://github.com/MrPeterJin/ASlide.git#egg=Aslide[czi]'
 ```
 
 - Brightfield CZI behaves like a standard slide, so `read_region()` is the normal read path.

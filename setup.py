@@ -312,6 +312,9 @@ setup(
             "python-bioformats",
             "python-javabridge",
         ],
+        "czi": [
+            "czifile",
+        ],
     },
     python_requires=">=3.10",
     classifiers=[
