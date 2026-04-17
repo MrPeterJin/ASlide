@@ -197,6 +197,21 @@ def test_default_registry_czi_entry_tracks_bioformats_dependency(monkeypatch) ->
     assert entry.is_available() is True
 
 
+def test_default_registry_czi_entry_accepts_czifile_as_fallback(monkeypatch) -> None:
+    from Aslide.registry import registry
+
+    registry_module = importlib.import_module("Aslide.registry")
+
+    entry = registry.get("czi")
+
+    def _fake_module_available(module: str) -> bool:
+        return module == "czifile"
+
+    monkeypatch.setattr(registry_module, "_module_available", _fake_module_available)
+
+    assert entry.is_available() is True
+
+
 def test_registry_prefers_hdf5_probe_for_h5ad(fake_multiplex_backend) -> None:
     from Aslide.registry import FormatEntry, FormatRegistry
 

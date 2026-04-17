@@ -65,7 +65,16 @@ def test_czi_slide_uses_injected_multiplex_adapter() -> None:
 
 
 def test_czi_slide_fails_cleanly_without_adapter_dependency(monkeypatch) -> None:
+    from Aslide.czi.adapter import CziAdapter
     from Aslide.czi.czi_slide import CziSlide
+
+    adapter = CziAdapter.from_metadata(
+        {
+            "channel_count": 3,
+            "illumination_types": ("Transmitted",),
+            "pixel_type": "bgr24",
+        }
+    )
 
     def _raise(_cls, _path):
         raise ImportError("Bio-Formats unavailable")
@@ -74,9 +83,14 @@ def test_czi_slide_fails_cleanly_without_adapter_dependency(monkeypatch) -> None
         "Aslide.czi.adapter.CziAdapter.from_bioformats",
         classmethod(_raise),
     )
+    monkeypatch.setattr(
+        "Aslide.czi.adapter.CziAdapter.from_czifile",
+        classmethod(lambda cls, path: adapter),
+    )
 
-    with pytest.raises(ImportError, match="adapter|dependency|CZI"):
-        CziSlide("demo.czi")
+    slide = CziSlide("demo.czi")
+
+    assert slide.classify_slide_family() == "brightfield"
 
 
 def test_czi_slide_builds_default_adapter_from_dependency(monkeypatch) -> None:
@@ -102,7 +116,21 @@ def test_czi_slide_builds_default_adapter_from_dependency(monkeypatch) -> None:
 
 
 def test_czi_slide_default_adapter_failure_has_clean_message(monkeypatch) -> None:
+    from Aslide.czi.adapter import CziAdapter
     from Aslide.czi.czi_slide import CziSlide
+
+    adapter = CziAdapter.from_metadata(
+        {
+            "channel_count": 4,
+            "pixel_type": "uint16",
+            "channel_names": ("DAPI", "CD3"),
+            "fluorophore_names": ("DAPI", "CD3"),
+            "illumination_types": ("Epifluorescence", "Epifluorescence"),
+            "excitation_wavelengths": (405.0, 488.0),
+            "emission_wavelengths": (450.0, 520.0),
+            "physical_pixel_sizes": (0.25, 0.25),
+        }
+    )
 
     def _raise(_cls, _path):
         raise ImportError("Bio-Formats unavailable")
@@ -111,13 +139,29 @@ def test_czi_slide_default_adapter_failure_has_clean_message(monkeypatch) -> Non
         "Aslide.czi.adapter.CziAdapter.from_bioformats",
         classmethod(_raise),
     )
+    monkeypatch.setattr(
+        "Aslide.czi.adapter.CziAdapter.from_czifile",
+        classmethod(lambda cls, path: adapter),
+    )
 
-    with pytest.raises(ImportError, match="Bio-Formats|CZI"):
-        CziSlide("demo.czi")
+    slide = CziSlide("demo.czi")
+
+    assert slide.classify_slide_family() == "multiplex"
 
 
-def test_czi_slide_propagates_runtime_init_errors_from_bioformats(monkeypatch) -> None:
+def test_czi_slide_falls_back_on_runtime_init_errors_from_bioformats(
+    monkeypatch,
+) -> None:
+    from Aslide.czi.adapter import CziAdapter
     from Aslide.czi.czi_slide import CziSlide
+
+    adapter = CziAdapter.from_metadata(
+        {
+            "channel_count": 3,
+            "illumination_types": ("Transmitted",),
+            "pixel_type": "bgr24",
+        }
+    )
 
     def _raise(_cls, _path):
         raise RuntimeError("Negative position")
@@ -127,8 +171,45 @@ def test_czi_slide_propagates_runtime_init_errors_from_bioformats(monkeypatch) -
         classmethod(_raise),
     )
 
-    with pytest.raises(RuntimeError, match="Negative position"):
-        CziSlide("MAKYGIW_rescan.czi")
+    monkeypatch.setattr(
+        "Aslide.czi.adapter.CziAdapter.from_czifile",
+        classmethod(lambda cls, path: adapter),
+    )
+
+    slide = CziSlide("MAKYGIW_rescan.czi")
+
+    assert slide.classify_slide_family() == "brightfield"
+
+
+def test_czi_slide_falls_back_to_czifile_when_bioformats_init_fails(
+    monkeypatch,
+) -> None:
+    from Aslide.czi.adapter import CziAdapter
+    from Aslide.czi.czi_slide import CziSlide
+
+    adapter = CziAdapter.from_metadata(
+        {
+            "channel_count": 3,
+            "illumination_types": ("Transmitted",),
+            "pixel_type": "bgr24",
+        }
+    )
+
+    def _raise(_cls, _path):
+        raise RuntimeError("Bio-Formats init failed")
+
+    monkeypatch.setattr(
+        "Aslide.czi.adapter.CziAdapter.from_bioformats",
+        classmethod(_raise),
+    )
+    monkeypatch.setattr(
+        "Aslide.czi.adapter.CziAdapter.from_czifile",
+        classmethod(lambda cls, path: adapter),
+    )
+
+    slide = CziSlide("demo.czi")
+
+    assert slide.classify_slide_family() == "brightfield"
 
 
 def test_czi_slide_exposes_shared_slide_metadata_from_adapter() -> None:
@@ -391,3 +472,249 @@ def test_czi_adapter_reuses_metadata_extraction_for_same_path(monkeypatch) -> No
     assert metadata_calls == ["same.czi"]
     assert first is not second
     assert first._reader is not second._reader
+
+
+def test_from_czifile_classifies_multiplex_from_czi_xml(monkeypatch) -> None:
+    from Aslide.czi.adapter import CziAdapter
+
+    class FakeSubBlock:
+        def __init__(self, *, m_index: int) -> None:
+            self.m_index = m_index
+
+    class FakeCziFile:
+        def __init__(self, path: str) -> None:
+            self.path = path
+            self.subblocks = [FakeSubBlock(m_index=0)]
+
+        def close(self) -> None:
+            pass
+
+    def fake_czifile_open(path: str):
+        return FakeCziFile(path)
+
+    monkeypatch.setattr("Aslide.czi.adapter.czifile.CziFile", fake_czifile_open)
+    monkeypatch.setattr(
+        "Aslide.czi.adapter._extract_czi_xml",
+        lambda _czi: (
+            "<OME xmlns='http://www.openmicroscopy.org/Schemas/OME/2016-06'>"
+            "<Image ID='Image:0'><Pixels SizeC='2' SizeX='8' SizeY='4' Type='uint16'>"
+            "<Channel ID='Channel:0:0' Name='DAPI' Fluor='DAPI' />"
+            "<Channel ID='Channel:0:1' Name='CD3' Fluor='CD3' />"
+            "</Pixels></Image></OME>"
+        ),
+    )
+
+    adapter = CziAdapter.from_czifile("multiplex.czi")
+
+    assert adapter.classify_slide_family() == "multiplex"
+    assert adapter.properties["channel_names"] == ("DAPI", "CD3")
+
+
+def test_from_czifile_exposes_biomarker_names(monkeypatch) -> None:
+    from Aslide.czi.adapter import CziAdapter
+
+    class FakeSubBlock:
+        def __init__(self, *, m_index: int) -> None:
+            self.m_index = m_index
+
+    class FakeCziFile:
+        def __init__(self, path: str) -> None:
+            self.path = path
+            self.subblocks = [FakeSubBlock(m_index=0)]
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("Aslide.czi.adapter.czifile.CziFile", FakeCziFile)
+    monkeypatch.setattr(
+        "Aslide.czi.adapter._extract_czi_xml",
+        lambda _czi: (
+            "<OME xmlns='http://www.openmicroscopy.org/Schemas/OME/2016-06'>"
+            "<Image ID='Image:0'><Pixels SizeC='2' SizeX='8' SizeY='4' Type='uint16'>"
+            "<Channel ID='Channel:0:0' Name='DAPI' Fluor='DAPI' />"
+            "<Channel ID='Channel:0:1' Name='CD3' Fluor='CD3' />"
+            "</Pixels></Image></OME>"
+        ),
+    )
+
+    adapter = CziAdapter.from_czifile("multiplex.czi")
+
+    assert adapter.list_biomarkers() == ["DAPI", "CD3"]
+    assert adapter.get_default_display_biomarker() == "DAPI"
+
+
+def test_from_czifile_reads_minimal_biomarker_region_from_subblocks(
+    monkeypatch,
+) -> None:
+    from Aslide.czi.adapter import CziAdapter
+
+    class FakeSubBlock:
+        def __init__(
+            self,
+            *,
+            m_index: int,
+            data: list[list[int]],
+            dimension_entries: tuple[tuple[str, int], ...],
+        ) -> None:
+            self.m_index = m_index
+            self._data = data
+            self.dimension_entries = dimension_entries
+            self.dimension_starts = {name: start for name, start in dimension_entries}
+
+    class FakeCziFile:
+        def __init__(self, path: str) -> None:
+            self.path = path
+            self.subblocks = [
+                FakeSubBlock(
+                    m_index=0,
+                    data=[
+                        [100, 101, 102, 103, 104, 105, 106, 107],
+                        [110, 111, 112, 113, 114, 115, 116, 117],
+                        [120, 121, 122, 123, 124, 125, 126, 127],
+                        [130, 131, 132, 133, 134, 135, 136, 137],
+                        [140, 141, 142, 143, 144, 145, 146, 147],
+                        [150, 151, 152, 153, 154, 155, 156, 157],
+                        [160, 161, 162, 163, 164, 165, 166, 167],
+                        [170, 171, 172, 173, 174, 175, 176, 177],
+                    ],
+                    dimension_entries=(("X", 10), ("Y", 20)),
+                )
+            ]
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("Aslide.czi.adapter.czifile.CziFile", FakeCziFile)
+    monkeypatch.setattr(
+        "Aslide.czi.adapter._extract_czi_xml",
+        lambda _czi: (
+            "<OME xmlns='http://www.openmicroscopy.org/Schemas/OME/2016-06'>"
+            "<Image ID='Image:0'><Pixels SizeC='1' SizeX='8' SizeY='8' Type='uint16'>"
+            "<Channel ID='Channel:0:0' Name='DAPI' Fluor='DAPI' />"
+            "</Pixels></Image></OME>"
+        ),
+    )
+
+    adapter = CziAdapter.from_czifile("multiplex.czi")
+
+    assert adapter.read_biomarker_region((12, 23), 0, (3, 2), "DAPI") == [
+        [132, 133, 134],
+        [142, 143, 144],
+    ]
+
+
+def test_from_bioformats_keeps_biomarker_region_on_reader_path(monkeypatch) -> None:
+    from Aslide.czi.adapter import CziAdapter
+
+    class FakeReader:
+        def __init__(self, path: str) -> None:
+            self.path = path
+            self.calls: list[dict[str, object]] = []
+
+        def read(self, **kwargs):
+            self.calls.append(kwargs)
+            return [[9, 8], [7, 6]]
+
+        def close(self) -> None:
+            pass
+
+    class FakeJavabridge:
+        def get_env(self):
+            return object()
+
+        def start_vm(self, class_path):
+            _ = class_path
+
+        def kill_vm(self):
+            pass
+
+    class FakePixels:
+        SizeC = 1
+        SizeX = 2
+        SizeY = 2
+        PixelType = "uint16"
+
+    class FakeImage:
+        Pixels = FakePixels()
+
+    class FakeOme:
+        image_count = 1
+
+        def image(self, _index: int) -> FakeImage:
+            return FakeImage()
+
+    fake_reader = FakeReader("bioformats.czi")
+
+    class FakeBioformats:
+        JARS = ("fake.jar",)
+
+        @staticmethod
+        def get_omexml_metadata(path: str) -> str:
+            _ = path
+            return (
+                '<OME xmlns="http://www.openmicroscopy.org/Schemas/OME/2016-06">'
+                '<Image ID="Image:0"><Pixels DimensionOrder="XYCZT" SizeC="1" SizeX="2" SizeY="2" '
+                'SizeZ="1" SizeT="1" Type="uint16">'
+                '<Channel ID="Channel:0:0" Name="DAPI" Fluor="DAPI" '
+                'IlluminationType="Epifluorescence" /></Pixels></Image></OME>'
+            )
+
+        @staticmethod
+        def OMEXML(_metadata: str) -> FakeOme:
+            return FakeOme()
+
+        class ImageReader:
+            def __init__(self, path: str) -> None:
+                _ = path
+                self._reader = fake_reader
+
+            def read(self, **kwargs):
+                return self._reader.read(**kwargs)
+
+            def close(self) -> None:
+                self._reader.close()
+
+    monkeypatch.setitem(__import__("sys").modules, "bioformats", FakeBioformats())
+    monkeypatch.setitem(__import__("sys").modules, "javabridge", FakeJavabridge())
+
+    adapter = CziAdapter.from_bioformats("bioformats.czi")
+
+    assert adapter.read_biomarker_region((0, 0), 0, (2, 2), "DAPI") == [[9, 8], [7, 6]]
+    assert fake_reader.calls, "expected the Bio-Formats reader path to be used"
+
+
+def test_from_czifile_parses_zeiss_image_document_metadata(monkeypatch) -> None:
+    from Aslide.czi.adapter import CziAdapter
+
+    class FakeCziFile:
+        def __init__(self, path: str) -> None:
+            self.path = path
+            self.axes = "ZCYX"
+            self.shape = (2, 3, 5, 7)
+            self.subblocks = []
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("Aslide.czi.adapter.czifile.CziFile", FakeCziFile)
+    monkeypatch.setattr(
+        "Aslide.czi.adapter._extract_czi_xml",
+        lambda _czi: (
+            "<ImageDocument>"
+            "<Metadata>"
+            "<Scaling>"
+            "<Items>"
+            "<Distance Id='X'><Value>0.25</Value></Distance>"
+            "<Distance Id='Y'><Value>0.5</Value></Distance>"
+            "</Items>"
+            "</Scaling>"
+            "</Metadata>"
+            "</ImageDocument>"
+        ),
+    )
+
+    adapter = CziAdapter.from_czifile("multiplex.czi")
+
+    assert adapter.classify_slide_family() == "multiplex"
+    assert adapter.dimensions == (7, 5)
+    assert adapter.properties["physical_pixel_sizes"] == (0.25, 0.5)
