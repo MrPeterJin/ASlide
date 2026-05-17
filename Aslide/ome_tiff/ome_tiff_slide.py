@@ -224,6 +224,8 @@ def _extract_channel_plane(
     array = np.asarray(data)
     if axes == "CYX":
         return array[channel_index]
+    if axes == "IYX":
+        return array[channel_index]
     if axes == "YX":
         return array
     if "C" in axes:
