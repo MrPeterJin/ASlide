@@ -19,7 +19,7 @@ from .probe import is_ome_tiff_candidate
 
 class OmeTiffSlide(AbstractSlide):
     @classmethod
-    def detect_format(cls, filename: str) -> str | None:
+    def detect_format(cls, filename: Any) -> str | None:
         if is_ome_tiff_candidate(filename):
             return "ome_tiff"
         return None
@@ -82,15 +82,12 @@ class OmeTiffSlide(AbstractSlide):
     def _read_signature(self, path: Path) -> dict[str, Any]:
         with tifffile.TiffFile(path) as tiff:
             series = tiff.series[0]
-            page = tiff.pages[0]
+            page: Any = tiff.pages[0]
             page_name = page.tags.get("PageName")
-            x_resolution = page.tags.get("XResolution")
             ome_channels = _extract_ome_channel_names(tiff.ome_metadata)
-            mpp = None
-            if x_resolution is not None:
-                num, den = x_resolution.value
-                if num:
-                    mpp = 25400.0 * den / num
+            mpp = _extract_ome_mpp(tiff.ome_metadata)
+            if mpp is None:
+                mpp = _extract_tiff_resolution_mpp(page)
             return {
                 "shape": tuple(int(value) for value in series.shape[-2:]),
                 "axes": series.axes,
@@ -210,12 +207,99 @@ def _extract_ome_channel_names(ome_metadata: str | None) -> list[str]:
     if not ome_metadata:
         return []
     root = ET.fromstring(ome_metadata)
-    ns = {"ome": "http://www.openmicroscopy.org/Schemas/OME/2016-06"}
-    channels = root.findall(".//ome:Channel", ns)
+    pixels = _find_ome_pixels(root)
+    channels = []
+    if pixels is not None:
+        channels = [child for child in pixels if _local_name(child.tag) == "Channel"]
+    if not channels:
+        channels = [element for element in root.iter() if _local_name(element.tag) == "Channel"]
     names: list[str] = []
     for index, channel in enumerate(channels):
         names.append(channel.attrib.get("Name") or f"Channel {index}")
     return names
+
+
+def _extract_ome_mpp(ome_metadata: str | None) -> float | None:
+    if not ome_metadata:
+        return None
+    root = ET.fromstring(ome_metadata)
+    pixels = _find_ome_pixels(root)
+    if pixels is None:
+        return None
+
+    x_mpp = _physical_size_to_micrometers(
+        pixels.attrib.get("PhysicalSizeX"), pixels.attrib.get("PhysicalSizeXUnit")
+    )
+    y_mpp = _physical_size_to_micrometers(
+        pixels.attrib.get("PhysicalSizeY"), pixels.attrib.get("PhysicalSizeYUnit")
+    )
+    values = [value for value in (x_mpp, y_mpp) if value is not None]
+    if not values:
+        return None
+    return sum(values) / len(values)
+
+
+def _find_ome_pixels(root: ET.Element) -> ET.Element | None:
+    for element in root.iter():
+        if _local_name(element.tag) == "Pixels":
+            return element
+    return None
+
+
+def _local_name(tag: str) -> str:
+    return tag.rsplit("}", maxsplit=1)[-1]
+
+
+def _physical_size_to_micrometers(value: str | None, unit: str | None) -> float | None:
+    if value is None:
+        return None
+    try:
+        size = float(value)
+    except ValueError:
+        return None
+
+    normalized_unit = (unit or "um").strip().lower().replace("\u00b5", "u").replace("\u03bc", "u")
+    factors = {
+        "um": 1.0,
+        "micrometer": 1.0,
+        "micrometre": 1.0,
+        "nm": 0.001,
+        "nanometer": 0.001,
+        "nanometre": 0.001,
+        "mm": 1000.0,
+        "millimeter": 1000.0,
+        "millimetre": 1000.0,
+        "cm": 10000.0,
+        "m": 1000000.0,
+    }
+    factor = factors.get(normalized_unit)
+    if factor is None:
+        return None
+    return size * factor
+
+
+def _extract_tiff_resolution_mpp(page: Any) -> float | None:
+    x_resolution = page.tags.get("XResolution")
+    y_resolution = page.tags.get("YResolution")
+    resolution_unit = page.tags.get("ResolutionUnit")
+    unit_value = resolution_unit.value if resolution_unit is not None else None
+    if unit_value == 2:
+        unit_micrometers = 25400.0
+    elif unit_value == 3:
+        unit_micrometers = 10000.0
+    else:
+        return None
+
+    values = []
+    for resolution in (x_resolution, y_resolution):
+        if resolution is None:
+            continue
+        num, den = resolution.value
+        if num:
+            values.append(unit_micrometers * den / num)
+    if not values:
+        return None
+    return sum(values) / len(values)
 
 
 def _extract_channel_plane(
@@ -225,6 +309,8 @@ def _extract_channel_plane(
     if axes == "CYX":
         return array[channel_index]
     if axes == "IYX":
+        return array[channel_index]
+    if axes == "QYX":
         return array[channel_index]
     if axes == "YX":
         return array
