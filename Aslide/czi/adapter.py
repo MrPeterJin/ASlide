@@ -742,71 +742,133 @@ def _read_czifile_biomarker_region(
 ) -> Any:
     x, y = location
     width, height = size
+    canvas: np.ndarray | None = None
     subblocks: Any = getattr(czi_file, "subblocks", ())
     if callable(subblocks):
         subblocks = subblocks()
-    for subblock in cast(Iterable[Any], subblocks):
+    subblock_list = tuple(cast(Iterable[Any], subblocks))
+    origin_x, origin_y = _czifile_coordinate_origin(subblock_list)
+    saw_channel = False
+    for subblock in subblock_list:
         directory_entry = getattr(subblock, "directory_entry", None)
         if directory_entry is not None:
             for dimension in getattr(directory_entry, "dimension_entries", ()):
                 if getattr(dimension, "dimension", None) == "C":
                     if int(getattr(dimension, "start", -1)) == channel_index:
-                        data = (
-                            subblock.data()
-                            if callable(getattr(subblock, "data", None))
-                            else getattr(subblock, "_data", subblock)
+                        saw_channel = True
+                        canvas = _copy_czifile_subblock_overlap(
+                            canvas,
+                            subblock,
+                            _subblock_dimension_start(subblock, "X") - origin_x,
+                            _subblock_dimension_start(subblock, "Y") - origin_y,
+                            x,
+                            y,
+                            width,
+                            height,
                         )
-                        start_x = int(
-                            getattr(subblock, "dimension_starts", {}).get("X", 0)
-                        )
-                        start_y = int(
-                            getattr(subblock, "dimension_starts", {}).get("Y", 0)
-                        )
-                        offset_x = x - start_x
-                        offset_y = y - start_y
-                        if offset_x < 0 or offset_y < 0:
-                            raise ValueError(
-                                "Requested window starts before matching subblock"
-                            )
-                        if (
-                            hasattr(data, "shape")
-                            and len(getattr(data, "shape", ())) >= 2
-                        ):
-                            return Image.fromarray(
-                                data.squeeze()[
-                                    offset_y : offset_y + height,
-                                    offset_x : offset_x + width,
-                                ],
-                                mode="L",
-                            )
-                        return [
-                            row[offset_x : offset_x + width]
-                            for row in data[offset_y : offset_y + height]
-                        ]
         if int(getattr(subblock, "m_index", -1)) == channel_index:
-            data = (
-                subblock.data()
-                if callable(getattr(subblock, "data", None))
-                else getattr(subblock, "_data", subblock)
+            saw_channel = True
+            canvas = _copy_czifile_subblock_overlap(
+                canvas,
+                subblock,
+                _subblock_dimension_start(subblock, "X") - origin_x,
+                _subblock_dimension_start(subblock, "Y") - origin_y,
+                x,
+                y,
+                width,
+                height,
             )
-            start_x = int(getattr(subblock, "dimension_starts", {}).get("X", 0))
-            start_y = int(getattr(subblock, "dimension_starts", {}).get("Y", 0))
-            offset_x = x - start_x
-            offset_y = y - start_y
-            if offset_x < 0 or offset_y < 0:
-                raise ValueError("Requested window starts before matching subblock")
-            if hasattr(data, "shape") and len(getattr(data, "shape", ())) >= 2:
-                return Image.fromarray(
-                    data.squeeze()[
-                        offset_y : offset_y + height, offset_x : offset_x + width
-                    ],
-                    mode="L",
-                )
-            return [
-                row[offset_x : offset_x + width]
-                for row in data[offset_y : offset_y + height]
-            ]
+    if canvas is not None:
+        return Image.fromarray(canvas, mode="L")
+    if saw_channel:
+        return Image.fromarray(np.zeros((height, width), dtype=np.uint8), mode="L")
     raise LookupError(f"Missing subblock for biomarker channel {channel_index}")
+
+
+def _czifile_coordinate_origin(subblocks: Iterable[Any]) -> tuple[int, int]:
+    min_x: int | None = None
+    min_y: int | None = None
+    for subblock in subblocks:
+        x_start = _subblock_dimension_start(subblock, "X")
+        y_start = _subblock_dimension_start(subblock, "Y")
+        x_size = _subblock_dimension_size(subblock, "X")
+        y_size = _subblock_dimension_size(subblock, "Y")
+        if x_size <= 0 or y_size <= 0:
+            continue
+        min_x = x_start if min_x is None else min(min_x, x_start)
+        min_y = y_start if min_y is None else min(min_y, y_start)
+    return (min_x or 0, min_y or 0)
+
+
+def _subblock_dimension_start(subblock: Any, dimension_name: str) -> int:
+    starts = getattr(subblock, "dimension_starts", None)
+    if isinstance(starts, dict) and dimension_name in starts:
+        return int(starts[dimension_name])
+    dimension_entries = getattr(
+        getattr(subblock, "directory_entry", None), "dimension_entries", ()
+    )
+    for dimension in dimension_entries:
+        if getattr(dimension, "dimension", None) == dimension_name:
+            return int(getattr(dimension, "start", 0))
+    return 0
+
+
+def _subblock_dimension_size(subblock: Any, dimension_name: str) -> int:
+    dimension_entries = getattr(
+        getattr(subblock, "directory_entry", None), "dimension_entries", ()
+    )
+    for dimension in dimension_entries:
+        if getattr(dimension, "dimension", None) == dimension_name:
+            return int(getattr(dimension, "size", 0))
+    data = getattr(subblock, "_data", None)
+    if data is not None and hasattr(data, "shape"):
+        shape = getattr(data, "shape", ())
+        if len(shape) >= 2:
+            return int(shape[-1] if dimension_name == "X" else shape[-2])
+    return 0
+
+
+def _copy_czifile_subblock_overlap(
+    canvas: np.ndarray | None,
+    subblock: Any,
+    start_x: int,
+    start_y: int,
+    request_x: int,
+    request_y: int,
+    request_width: int,
+    request_height: int,
+) -> np.ndarray | None:
+    tile_width = _subblock_dimension_size(subblock, "X")
+    tile_height = _subblock_dimension_size(subblock, "Y")
+    if tile_width <= 0 or tile_height <= 0:
+        return canvas
+    overlap = _intersect_rect(
+        (request_x, request_y, request_x + request_width, request_y + request_height),
+        (start_x, start_y, start_x + tile_width, start_y + tile_height),
+    )
+    if overlap is None:
+        return canvas
+
+    data = (
+        subblock.data()
+        if callable(getattr(subblock, "data", None))
+        else getattr(subblock, "_data", subblock)
+    )
+    tile_array = np.asarray(data).squeeze()
+    if tile_array.ndim < 2:
+        return canvas
+    if tile_array.ndim > 2:
+        tile_array = tile_array.reshape((-1, *tile_array.shape[-2:]))[0]
+
+    if canvas is None:
+        canvas = np.zeros((request_height, request_width), dtype=tile_array.dtype)
+
+    ox0, oy0, ox1, oy1 = overlap
+    canvas[oy0 - request_y : oy1 - request_y, ox0 - request_x : ox1 - request_x] = tile_array[
+        oy0 - start_y : oy1 - start_y,
+        ox0 - start_x : ox1 - start_x,
+    ]
+    return canvas
 
 
 def _read_bioformats_biomarker_region(
