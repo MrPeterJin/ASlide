@@ -19,7 +19,7 @@ except ImportError:  # pragma: no cover - optional dependency
     czifile = None
 
 
-_BIOFORMATS_METADATA_CACHE: dict[str, tuple[dict[str, Any], tuple[int, int]]] = {}
+_BIOFORMATS_METADATA_CACHE: dict[str, tuple[dict[str, Any], tuple[int, int], int]] = {}
 
 
 @dataclass
@@ -34,6 +34,7 @@ class CziAdapter:
     _backend: str = "metadata"
     _javabridge: Any | None = None
     _owns_vm: bool = False
+    _bioformats_series: int = 0
 
     @classmethod
     def from_metadata(cls, metadata: dict[str, Any]) -> "CziAdapter":
@@ -70,9 +71,11 @@ class CziAdapter:
             if cached is None:
                 ome_metadata = bioformats.get_omexml_metadata(path)
                 ome = bioformats.OMEXML(ome_metadata)
+                image_index = _select_largest_bioformats_image_index(ome)
                 cached = (
-                    _extract_normalized_metadata(ome, ome_metadata),
-                    _extract_dimensions(ome),
+                    _extract_normalized_metadata(ome, ome_metadata, image_index),
+                    _extract_dimensions(ome, image_index),
+                    image_index,
                 )
                 _BIOFORMATS_METADATA_CACHE[path] = cached
             image_reader = bioformats.ImageReader(path)
@@ -83,7 +86,7 @@ class CziAdapter:
                 f"Failed to initialize Bio-Formats CZI adapter: {exc}"
             ) from exc
 
-        normalized_raw, dimensions = cached
+        normalized_raw, dimensions, image_index = cached
         normalized = normalize_czi_metadata(normalized_raw)
         return cls(
             metadata=normalized,
@@ -100,6 +103,7 @@ class CziAdapter:
             _backend="bioformats",
             _javabridge=javabridge,
             _owns_vm=owns_vm,
+            _bioformats_series=image_index,
         )
 
     @classmethod
@@ -158,7 +162,7 @@ class CziAdapter:
                 c=0,
                 z=0,
                 t=0,
-                series=0,
+                series=self._bioformats_series,
                 rescale=False,
                 XYWH=(x, y, width, height),
             )
@@ -190,7 +194,7 @@ class CziAdapter:
                 raise ValueError("CZI adapter currently supports only level 0")
             channel_index = self.list_biomarkers().index(biomarker)
             return _read_bioformats_biomarker_region(
-                self._reader, location, size, channel_index
+                self._reader, location, size, channel_index, self._bioformats_series
             )
         if self._backend == "czifile" and self._reader is not None:
             if level != 0:
@@ -213,11 +217,28 @@ class CziAdapter:
                 pass
 
 
-def _extract_dimensions(ome: Any) -> tuple[int, int]:
+def _select_largest_bioformats_image_index(ome: Any) -> int:
+    try:
+        image_count = int(getattr(ome, "image_count", 0) or 0)
+    except Exception:
+        return 0
+
+    best_index = 0
+    best_area = -1
+    for index in range(image_count):
+        width, height = _extract_dimensions(ome, index)
+        area = width * height
+        if area > best_area:
+            best_index = index
+            best_area = area
+    return best_index
+
+
+def _extract_dimensions(ome: Any, image_index: int = 0) -> tuple[int, int]:
     try:
         if ome.image_count <= 0:
             return (0, 0)
-        pixels = ome.image(0).Pixels
+        pixels = ome.image(image_index).Pixels
         return (
             int(getattr(pixels, "SizeX", 0) or 0),
             int(getattr(pixels, "SizeY", 0) or 0),
@@ -227,7 +248,7 @@ def _extract_dimensions(ome: Any) -> tuple[int, int]:
 
 
 def _extract_normalized_metadata(
-    ome: Any, ome_xml: str | None = None
+    ome: Any, ome_xml: str | None = None, image_index: int = 0
 ) -> dict[str, Any]:
     channel_count = 0
     pixel_type = None
@@ -240,7 +261,7 @@ def _extract_normalized_metadata(
 
     try:
         if ome.image_count > 0:
-            pixels = ome.image(0).Pixels
+            pixels = ome.image(image_index).Pixels
             channel_count = int(getattr(pixels, "SizeC", 0) or 0)
             pixel_type = getattr(pixels, "PixelType", None)
             for index in range(channel_count):
@@ -629,6 +650,7 @@ def _read_bioformats_biomarker_region(
     location: tuple[int, int],
     size: tuple[int, int],
     channel_index: int,
+    series: int = 0,
 ) -> Any:
     x, y = location
     width, height = size
@@ -636,7 +658,7 @@ def _read_bioformats_biomarker_region(
         c=channel_index,
         z=0,
         t=0,
-        series=0,
+        series=series,
         rescale=False,
         XYWH=(x, y, width, height),
     )
