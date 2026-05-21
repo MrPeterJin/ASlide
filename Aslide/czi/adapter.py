@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import importlib
+import re
 from typing import Any, Iterable, cast
 from xml.etree import ElementTree as ET
 
+import numpy as np
 from PIL import Image
 
 from .metadata import (
@@ -19,7 +21,16 @@ except ImportError:  # pragma: no cover - optional dependency
     czifile = None
 
 
-_BIOFORMATS_METADATA_CACHE: dict[str, tuple[dict[str, Any], tuple[int, int], int]] = {}
+_BIOFORMATS_METADATA_CACHE: dict[
+    str, tuple[dict[str, Any], tuple[int, int], int, tuple["_BioformatsScene", ...]]
+] = {}
+
+
+@dataclass(frozen=True)
+class _BioformatsScene:
+    index: int
+    offset: tuple[int, int]
+    size: tuple[int, int]
 
 
 @dataclass
@@ -35,6 +46,7 @@ class CziAdapter:
     _javabridge: Any | None = None
     _owns_vm: bool = False
     _bioformats_series: int = 0
+    _bioformats_scenes: tuple[_BioformatsScene, ...] = ()
 
     @classmethod
     def from_metadata(cls, metadata: dict[str, Any]) -> "CziAdapter":
@@ -72,10 +84,13 @@ class CziAdapter:
                 ome_metadata = bioformats.get_omexml_metadata(path)
                 ome = bioformats.OMEXML(ome_metadata)
                 image_index = _select_largest_bioformats_image_index(ome)
+                scene_canvas, scenes = _extract_bioformats_scene_layout(ome, path)
+                dimensions = scene_canvas or _extract_dimensions(ome, image_index)
                 cached = (
                     _extract_normalized_metadata(ome, ome_metadata, image_index),
-                    _extract_dimensions(ome, image_index),
+                    dimensions,
                     image_index,
+                    scenes,
                 )
                 _BIOFORMATS_METADATA_CACHE[path] = cached
             image_reader = bioformats.ImageReader(path)
@@ -86,7 +101,7 @@ class CziAdapter:
                 f"Failed to initialize Bio-Formats CZI adapter: {exc}"
             ) from exc
 
-        normalized_raw, dimensions, image_index = cached
+        normalized_raw, dimensions, image_index, scenes = cached
         normalized = normalize_czi_metadata(normalized_raw)
         return cls(
             metadata=normalized,
@@ -104,6 +119,7 @@ class CziAdapter:
             _javabridge=javabridge,
             _owns_vm=owns_vm,
             _bioformats_series=image_index,
+            _bioformats_scenes=scenes,
         )
 
     @classmethod
@@ -137,7 +153,15 @@ class CziAdapter:
         return classify_czi_family(self.metadata)
 
     def list_biomarkers(self) -> list[str]:
-        return [name for name in self.metadata.fluorophore_names if name]
+        names: list[str] = []
+        for name in (*self.metadata.fluorophore_names, *self.metadata.channel_names):
+            if name and name not in names:
+                names.append(name)
+        for index in range(self.metadata.channel_count):
+            alias = f"channel_{index}"
+            if alias not in names:
+                names.append(alias)
+        return names
 
     def get_default_display_biomarker(self) -> str:
         biomarkers = self.list_biomarkers()
@@ -158,13 +182,13 @@ class CziAdapter:
                 )
             x, y = location
             width, height = size
-            image_data = self._reader.read(
-                c=0,
-                z=0,
-                t=0,
-                series=self._bioformats_series,
-                rescale=False,
-                XYWH=(x, y, width, height),
+            image_data = _read_bioformats_canvas_region(
+                self._reader,
+                (x, y),
+                (width, height),
+                0,
+                self._bioformats_series,
+                self._bioformats_scenes,
             )
             if len(image_data.shape) == 2:
                 return Image.fromarray(image_data, mode="L")
@@ -187,23 +211,41 @@ class CziAdapter:
         size: tuple[int, int],
         biomarker: str,
     ) -> Image.Image | tuple[tuple[int, int], int, tuple[int, int], str]:
-        if biomarker not in self.list_biomarkers():
+        channel_index = self._biomarker_channel_index(biomarker)
+        if channel_index is None:
             raise LookupError(f"Unknown biomarker: {biomarker}")
         if self._backend == "bioformats" and self._reader is not None:
             if level != 0:
                 raise ValueError("CZI adapter currently supports only level 0")
-            channel_index = self.list_biomarkers().index(biomarker)
             return _read_bioformats_biomarker_region(
-                self._reader, location, size, channel_index, self._bioformats_series
+                self._reader,
+                location,
+                size,
+                channel_index,
+                self._bioformats_series,
+                self._bioformats_scenes,
             )
         if self._backend == "czifile" and self._reader is not None:
             if level != 0:
                 raise ValueError("CZI adapter currently supports only level 0")
-            channel_index = self.list_biomarkers().index(biomarker)
             return _read_czifile_biomarker_region(
                 self._reader, location, size, channel_index
             )
         return (location, level, size, biomarker)
+
+    def _biomarker_channel_index(self, biomarker: str) -> int | None:
+        fluorophores = list(self.metadata.fluorophore_names)
+        if biomarker in fluorophores:
+            return fluorophores.index(biomarker)
+        channel_names = list(self.metadata.channel_names)
+        if biomarker in channel_names:
+            return channel_names.index(biomarker)
+        match = re.fullmatch(r"channel_(\d+)", biomarker)
+        if match:
+            index = int(match.group(1))
+            if 0 <= index < self.metadata.channel_count:
+                return index
+        return None
 
     def get_best_level_for_downsample(self, downsample: float) -> int:
         _ = downsample
@@ -215,6 +257,16 @@ class CziAdapter:
                 self._reader.close()
             except Exception:
                 pass
+            finally:
+                self._reader = None
+        if self._owns_vm and self._javabridge is not None:
+            try:
+                if self._javabridge.get_env():
+                    self._javabridge.kill_vm()
+            except Exception:
+                pass
+            finally:
+                self._owns_vm = False
 
 
 def _select_largest_bioformats_image_index(ome: Any) -> int:
@@ -232,6 +284,118 @@ def _select_largest_bioformats_image_index(ome: Any) -> int:
             best_index = index
             best_area = area
     return best_index
+
+
+def _extract_bioformats_scene_layout(
+    ome: Any, path: str
+) -> tuple[tuple[int, int] | None, tuple[_BioformatsScene, ...]]:
+    if czifile is None:
+        return None, ()
+
+    try:
+        with czifile.CziFile(path) as czi_file:
+            axes = str(getattr(czi_file, "axes", "") or "")
+            shape = getattr(czi_file, "shape", None)
+            if not axes or not shape:
+                return None, ()
+            axis_sizes = {axis.upper(): int(length) for axis, length in zip(axes, shape)}
+            scene_count = axis_sizes.get("S", 0)
+            canvas = (
+                int(axis_sizes.get("X", 0) or 0),
+                int(axis_sizes.get("Y", 0) or 0),
+            )
+            if scene_count <= 1 or canvas[0] <= 0 or canvas[1] <= 0:
+                return None, ()
+
+            bounds = _extract_czifile_scene_bounds(czi_file)
+    except Exception:
+        return None, ()
+
+    if not bounds:
+        return None, ()
+
+    try:
+        image_count = int(getattr(ome, "image_count", 0) or 0)
+    except Exception:
+        return None, ()
+
+    scenes: list[_BioformatsScene] = []
+    last_image_index = 0
+    for scene_index in sorted(bounds):
+        width = bounds[scene_index][2] - bounds[scene_index][0]
+        height = bounds[scene_index][3] - bounds[scene_index][1]
+        if width <= 0 or height <= 0:
+            continue
+        image_index = _find_matching_bioformats_image_index(
+            ome, width, height, last_image_index, image_count
+        )
+        if image_index is None:
+            continue
+        last_image_index = image_index + 1
+        scenes.append(
+            _BioformatsScene(
+                index=image_index,
+                offset=(int(bounds[scene_index][0]), int(bounds[scene_index][1])),
+                size=_extract_dimensions(ome, image_index),
+            )
+        )
+
+    if len(scenes) <= 1:
+        return None, ()
+
+    min_x = min(scene.offset[0] for scene in scenes)
+    min_y = min(scene.offset[1] for scene in scenes)
+    normalized = tuple(
+        _BioformatsScene(
+            index=scene.index,
+            offset=(scene.offset[0] - min_x, scene.offset[1] - min_y),
+            size=scene.size,
+        )
+        for scene in scenes
+    )
+    return canvas, normalized
+
+
+def _extract_czifile_scene_bounds(czi_file: Any) -> dict[int, list[int]]:
+    bounds: dict[int, list[int]] = {}
+    subblocks: Any = getattr(czi_file, "subblocks", ())
+    if callable(subblocks):
+        subblocks = subblocks()
+    for subblock in cast(Iterable[Any], subblocks):
+        dimension_entries = getattr(
+            getattr(subblock, "directory_entry", None), "dimension_entries", ()
+        )
+        entries = {
+            getattr(dimension, "dimension", None): (
+                int(getattr(dimension, "start", 0)),
+                int(getattr(dimension, "size", 0)),
+            )
+            for dimension in dimension_entries
+        }
+        x_start, x_size = entries.get("X", (0, 0))
+        y_start, y_size = entries.get("Y", (0, 0))
+        scene_index = entries.get("S", (0, 1))[0]
+        if x_size <= 0 or y_size <= 0:
+            continue
+        if scene_index not in bounds:
+            bounds[scene_index] = [x_start, y_start, x_start + x_size, y_start + y_size]
+        else:
+            scene_bounds = bounds[scene_index]
+            scene_bounds[0] = min(scene_bounds[0], x_start)
+            scene_bounds[1] = min(scene_bounds[1], y_start)
+            scene_bounds[2] = max(scene_bounds[2], x_start + x_size)
+            scene_bounds[3] = max(scene_bounds[3], y_start + y_size)
+    return bounds
+
+
+def _find_matching_bioformats_image_index(
+    ome: Any, width: int, height: int, start: int, image_count: int
+) -> int | None:
+    for index in range(start, image_count):
+        image_width, image_height = _extract_dimensions(ome, index)
+        if abs(image_width - width) <= 512 and abs(image_height - height) <= 512:
+            return index
+    return None
 
 
 def _extract_dimensions(ome: Any, image_index: int = 0) -> tuple[int, int]:
@@ -651,9 +815,64 @@ def _read_bioformats_biomarker_region(
     size: tuple[int, int],
     channel_index: int,
     series: int = 0,
+    scenes: tuple[_BioformatsScene, ...] = (),
+) -> Any:
+    image_data = _read_bioformats_canvas_region(
+        reader, location, size, channel_index, series, scenes
+    )
+    if isinstance(image_data, list):
+        return image_data
+    if hasattr(image_data, "shape") and len(image_data.shape) == 2:
+        return Image.fromarray(image_data, mode="L")
+    return Image.fromarray(image_data)
+
+
+def _read_bioformats_canvas_region(
+    reader: Any,
+    location: tuple[int, int],
+    size: tuple[int, int],
+    channel_index: int,
+    series: int = 0,
+    scenes: tuple[_BioformatsScene, ...] = (),
 ) -> Any:
     x, y = location
     width, height = size
+    if scenes:
+        canvas = np.zeros((height, width), dtype=np.uint8)
+        for scene in scenes:
+            overlap = _intersect_rect(
+                (x, y, x + width, y + height),
+                (
+                    scene.offset[0],
+                    scene.offset[1],
+                    scene.offset[0] + scene.size[0],
+                    scene.offset[1] + scene.size[1],
+                ),
+            )
+            if overlap is None:
+                continue
+            ox0, oy0, ox1, oy1 = overlap
+            tile = reader.read(
+                c=channel_index,
+                z=0,
+                t=0,
+                series=scene.index,
+                rescale=False,
+                XYWH=(
+                    ox0 - scene.offset[0],
+                    oy0 - scene.offset[1],
+                    ox1 - ox0,
+                    oy1 - oy0,
+                ),
+            )
+            tile_array = np.asarray(tile)
+            if tile_array.ndim == 3:
+                tile_array = tile_array[:, :, 0]
+            canvas[oy0 - y : oy1 - y, ox0 - x : ox1 - x] = tile_array[
+                : oy1 - oy0, : ox1 - ox0
+            ]
+        return canvas
+
     image_data = reader.read(
         c=channel_index,
         z=0,
@@ -662,8 +881,16 @@ def _read_bioformats_biomarker_region(
         rescale=False,
         XYWH=(x, y, width, height),
     )
-    if isinstance(image_data, list):
-        return image_data
-    if hasattr(image_data, "shape") and len(image_data.shape) == 2:
-        return Image.fromarray(image_data, mode="L")
-    return Image.fromarray(image_data)
+    return image_data
+
+
+def _intersect_rect(
+    first: tuple[int, int, int, int], second: tuple[int, int, int, int]
+) -> tuple[int, int, int, int] | None:
+    x0 = max(first[0], second[0])
+    y0 = max(first[1], second[1])
+    x1 = min(first[2], second[2])
+    y1 = min(first[3], second[3])
+    if x1 <= x0 or y1 <= y0:
+        return None
+    return (x0, y0, x1, y1)
