@@ -57,6 +57,15 @@ class OmeTiffSlide(AbstractSlide):
                 self._channel_indices[label] = index
             return
 
+        if anchor_signature["page_channels"]:
+            self._single_file_path = anchor_path
+            self._single_file_axes = anchor_signature["axes"]
+            for index, label in enumerate(anchor_signature["page_channels"]):
+                self._channels[label] = anchor_path
+                self._channel_order.append(label)
+                self._channel_indices[label] = index
+            return
+
         for candidate in sorted(anchor_path.parent.iterdir()):
             if not candidate.is_file():
                 continue
@@ -85,6 +94,7 @@ class OmeTiffSlide(AbstractSlide):
             page: Any = tiff.pages[0]
             page_name = page.tags.get("PageName")
             ome_channels = _extract_ome_channel_names(tiff.ome_metadata)
+            page_channels = _extract_page_channel_names_from_tiff(tiff)
             mpp = _extract_ome_mpp(tiff.ome_metadata)
             if mpp is None:
                 mpp = _extract_tiff_resolution_mpp(page)
@@ -95,6 +105,7 @@ class OmeTiffSlide(AbstractSlide):
                 "label": str(page_name.value) if page_name else path.stem,
                 "mpp": mpp,
                 "ome_channels": ome_channels,
+                "page_channels": page_channels,
             }
 
     @property
@@ -181,7 +192,7 @@ class OmeTiffSlide(AbstractSlide):
                 np.asarray(data), self._single_file_axes, channel_index
             )
         else:
-            plane = np.asarray(data)
+            plane = _coerce_channel_plane(data)
         region = np.asarray(plane[y : y + height, x : x + width])
         if region.size == 0:
             region = np.zeros((height, width), dtype=np.uint8)
@@ -201,6 +212,38 @@ def _normalize_to_uint8(data: np.ndarray) -> np.ndarray:
         return np.zeros(data.shape, dtype=np.uint8)
     scaled = (data - minimum) / (maximum - minimum)
     return (scaled * 255).astype(np.uint8)
+
+
+def _coerce_channel_plane(data: Any) -> np.ndarray:
+    array = np.asarray(data)
+    if array.ndim <= 2:
+        return array
+
+    squeezed = np.squeeze(array)
+    if squeezed.ndim == 2:
+        return squeezed
+
+    if squeezed.ndim > 2:
+        return np.asarray(squeezed[0])
+    return np.asarray(squeezed)
+
+
+def _extract_page_channel_names(path: Path) -> list[str]:
+    with tifffile.TiffFile(path) as tiff:
+        return _extract_page_channel_names_from_tiff(tiff)
+
+
+def _extract_page_channel_names_from_tiff(tiff: tifffile.TiffFile) -> list[str]:
+    names: list[str] = []
+    for page in tiff.pages:
+        tags = getattr(page, "tags", None)
+        if tags is None:
+            return []
+        page_name = tags.get("PageName")
+        if page_name is None:
+            return []
+        names.append(str(page_name.value))
+    return names if len(names) > 1 else []
 
 
 def _extract_ome_channel_names(ome_metadata: str | None) -> list[str]:
