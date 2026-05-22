@@ -54,6 +54,7 @@ class CziAdapter:
     _bioformats_series: int = 0
     _bioformats_scenes: tuple[_BioformatsScene, ...] = ()
     _pylibczirw_scene: _PylibCziScene | None = None
+    _pylibczirw_context: Any | None = None
 
     @classmethod
     def from_metadata(cls, metadata: dict[str, Any]) -> "CziAdapter":
@@ -138,11 +139,19 @@ class CziAdapter:
                 "CZI support requires optional dependency: pylibCZIrw"
             ) from exc
 
+        czi_context: Any | None = None
         try:
-            czi_document = pyczi.open_czi(path)
+            czi_context = pyczi.open_czi(path)
+            czi_document = (
+                czi_context.__enter__()
+                if czi_context is not None and hasattr(czi_context, "__enter__")
+                else czi_context
+            )
             metadata = _extract_pylibczirw_metadata(czi_document)
             scene = _select_pylibczirw_scene(czi_document)
         except Exception as exc:
+            if czi_context is not None and hasattr(czi_context, "__exit__"):
+                czi_context.__exit__(type(exc), exc, exc.__traceback__)
             raise RuntimeError(
                 f"Failed to initialize pylibCZIrw CZI adapter: {exc}"
             ) from exc
@@ -167,6 +176,7 @@ class CziAdapter:
             _reader=czi_document,
             _backend="pylibczirw",
             _pylibczirw_scene=scene,
+            _pylibczirw_context=czi_context if hasattr(czi_context, "__exit__") else None,
         )
 
     @classmethod
@@ -319,6 +329,15 @@ class CziAdapter:
         return 0
 
     def close(self) -> None:
+        if self._pylibczirw_context is not None:
+            try:
+                self._pylibczirw_context.__exit__(None, None, None)
+            except Exception:
+                pass
+            finally:
+                self._pylibczirw_context = None
+                self._reader = None
+            return
         if self._reader is not None:
             try:
                 self._reader.close()
