@@ -3,6 +3,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Protocol
 
+import numpy as np
+from PIL import Image
+
 from .adapter import CziAdapter
 from ..errors import UnsupportedOperationError
 
@@ -141,7 +144,37 @@ class CziSlide:
             raise UnsupportedOperationError(
                 "CZI brightfield slides do not expose biomarkers"
             )
-        return self._adapter.read_biomarker_region(location, level, size, biomarker)
+        image = self._adapter.read_biomarker_region(location, level, size, biomarker)
+        return _biomarker_region_to_rgba(image)
 
     def close(self) -> None:
         self._adapter.close()
+
+
+def _biomarker_region_to_rgba(image: Any) -> Image.Image:
+    if hasattr(image, "mode") and image.mode == "RGBA":
+        return image
+    data = np.asarray(image)
+    if data.ndim == 3 and data.shape[-1] == 1:
+        data = data[:, :, 0]
+    if data.ndim == 2:
+        if data.dtype != np.uint8:
+            data = _normalize_to_uint8(data)
+        rgba = np.stack([data, data, data, np.full_like(data, 255)], axis=-1)
+        return Image.fromarray(rgba, mode="RGBA")
+    pil_image = image if hasattr(image, "mode") else Image.fromarray(data)
+    if pil_image.mode != "RGBA":
+        return pil_image.convert("RGBA")
+    return pil_image
+
+
+def _normalize_to_uint8(data: Any) -> np.ndarray:
+    array = np.asarray(data)
+    if array.size == 0:
+        return np.zeros(array.shape, dtype=np.uint8)
+    minimum = float(array.min())
+    maximum = float(array.max())
+    if maximum <= minimum:
+        return np.zeros(array.shape, dtype=np.uint8)
+    scaled = (array - minimum) / (maximum - minimum)
+    return (scaled * 255).astype(np.uint8)
