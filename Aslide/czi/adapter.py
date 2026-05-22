@@ -33,6 +33,12 @@ class _BioformatsScene:
     size: tuple[int, int]
 
 
+@dataclass(frozen=True)
+class _PylibCziScene:
+    index: int | None
+    rect: tuple[int, int, int, int]
+
+
 @dataclass
 class CziAdapter:
     metadata: NormalizedCziMetadata
@@ -47,6 +53,7 @@ class CziAdapter:
     _owns_vm: bool = False
     _bioformats_series: int = 0
     _bioformats_scenes: tuple[_BioformatsScene, ...] = ()
+    _pylibczirw_scene: _PylibCziScene | None = None
 
     @classmethod
     def from_metadata(cls, metadata: dict[str, Any]) -> "CziAdapter":
@@ -123,6 +130,46 @@ class CziAdapter:
         )
 
     @classmethod
+    def from_pylibczirw(cls, path: str) -> "CziAdapter":
+        try:
+            pyczi = importlib.import_module("pylibCZIrw.czi")
+        except ImportError as exc:
+            raise ImportError(
+                "CZI support requires optional dependency: pylibCZIrw"
+            ) from exc
+
+        try:
+            czi_document = pyczi.open_czi(path)
+            metadata = _extract_pylibczirw_metadata(czi_document)
+            scene = _select_pylibczirw_scene(czi_document)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to initialize pylibCZIrw CZI adapter: {exc}"
+            ) from exc
+
+        normalized = normalize_czi_metadata(metadata)
+        dimensions = (scene.rect[2], scene.rect[3])
+        properties = {
+            "openslide.vendor": "Zeiss",
+            "aslide.czi.backend": "pylibczirw",
+            "aslide.czi.scene_origin": f"{scene.rect[0]},{scene.rect[1]}",
+            **_metadata_properties(normalized),
+        }
+        if scene.index is not None:
+            properties["aslide.czi.scene_index"] = str(scene.index)
+        return cls(
+            metadata=normalized,
+            dimensions=dimensions,
+            level_count=1,
+            level_dimensions=(dimensions,),
+            level_downsamples=(1.0,),
+            properties=properties,
+            _reader=czi_document,
+            _backend="pylibczirw",
+            _pylibczirw_scene=scene,
+        )
+
+    @classmethod
     def from_czifile(cls, path: str) -> "CziAdapter":
         if czifile is None:
             raise ImportError("CZI support requires optional dependency: czifile")
@@ -193,6 +240,16 @@ class CziAdapter:
             if len(image_data.shape) == 2:
                 return Image.fromarray(image_data, mode="L")
             return Image.fromarray(image_data)
+        if self._backend == "pylibczirw" and self._reader is not None:
+            if level != 0:
+                raise ValueError("CZI adapter currently supports only level 0")
+            return _read_pylibczirw_region(
+                self._reader,
+                self._pylibczirw_scene,
+                location,
+                size,
+                0,
+            )
         return (location, level, size)
 
     def get_thumbnail(
@@ -224,6 +281,16 @@ class CziAdapter:
                 channel_index,
                 self._bioformats_series,
                 self._bioformats_scenes,
+            )
+        if self._backend == "pylibczirw" and self._reader is not None:
+            if level != 0:
+                raise ValueError("CZI adapter currently supports only level 0")
+            return _read_pylibczirw_region(
+                self._reader,
+                self._pylibczirw_scene,
+                location,
+                size,
+                channel_index,
             )
         if self._backend == "czifile" and self._reader is not None:
             if level != 0:
@@ -616,6 +683,67 @@ def _extract_czifile_metadata(czi_file: Any) -> tuple[dict[str, Any], tuple[int,
     return metadata, dimensions
 
 
+def _extract_pylibczirw_metadata(czi_document: Any) -> dict[str, Any]:
+    channel_count = 0
+    total_bounding_box = getattr(czi_document, "total_bounding_box", {}) or {}
+    channel_bounds = total_bounding_box.get("C") if isinstance(total_bounding_box, dict) else None
+    if channel_bounds is not None and len(channel_bounds) >= 2:
+        channel_count = int(channel_bounds[1]) - int(channel_bounds[0])
+
+    pixel_type = None
+    pixel_types = getattr(czi_document, "pixel_types", None)
+    if isinstance(pixel_types, dict) and pixel_types:
+        pixel_type = str(next(iter(pixel_types.values())))
+    elif callable(getattr(czi_document, "get_channel_pixel_type", None)):
+        try:
+            pixel_type = str(czi_document.get_channel_pixel_type(0))
+        except Exception:
+            pixel_type = None
+    if channel_count <= 0 and isinstance(pixel_types, dict):
+        channel_count = len(pixel_types)
+
+    channel_names = tuple(f"channel_{index}" for index in range(max(channel_count, 0)))
+    return {
+        "channel_count": channel_count,
+        "pixel_type": pixel_type,
+        "illumination_types": ("Epifluorescence",) if channel_count > 1 else (),
+        "fluorophore_names": (),
+        "excitation_wavelengths": (),
+        "emission_wavelengths": (),
+        "channel_names": channel_names,
+        "physical_pixel_sizes": (),
+    }
+
+
+def _select_pylibczirw_scene(czi_document: Any) -> _PylibCziScene:
+    scenes = getattr(czi_document, "scenes_bounding_rectangle", None) or {}
+    if scenes:
+        index, rect = max(
+            scenes.items(),
+            key=lambda item: _pylibczirw_rect_tuple(item[1])[2]
+            * _pylibczirw_rect_tuple(item[1])[3],
+        )
+        return _PylibCziScene(index=int(index), rect=_pylibczirw_rect_tuple(rect))
+
+    rect = getattr(czi_document, "total_bounding_rectangle", None)
+    if rect is not None:
+        return _PylibCziScene(index=None, rect=_pylibczirw_rect_tuple(rect))
+
+    total_bounding_box = getattr(czi_document, "total_bounding_box", {}) or {}
+    x_bounds = total_bounding_box.get("X", (0, 0))
+    y_bounds = total_bounding_box.get("Y", (0, 0))
+    x0, x1 = int(x_bounds[0]), int(x_bounds[1])
+    y0, y1 = int(y_bounds[0]), int(y_bounds[1])
+    return _PylibCziScene(index=None, rect=(x0, y0, max(0, x1 - x0), max(0, y1 - y0)))
+
+
+def _pylibczirw_rect_tuple(rect: Any) -> tuple[int, int, int, int]:
+    if all(hasattr(rect, attr) for attr in ("x", "y", "w", "h")):
+        return (int(rect.x), int(rect.y), int(rect.w), int(rect.h))
+    x, y, width, height = rect
+    return (int(x), int(y), int(width), int(height))
+
+
 def _extract_channel_fields_from_image_document_xml(
     xml_text: str, czi_file: Any
 ) -> dict[str, Any]:
@@ -869,6 +997,44 @@ def _copy_czifile_subblock_overlap(
         ox0 - start_x : ox1 - start_x,
     ]
     return canvas
+
+
+def _read_pylibczirw_region(
+    czi_document: Any,
+    scene: _PylibCziScene | None,
+    location: tuple[int, int],
+    size: tuple[int, int],
+    channel_index: int,
+) -> Image.Image:
+    if scene is None:
+        scene = _select_pylibczirw_scene(czi_document)
+    x, y = location
+    width, height = size
+    scene_x, scene_y, _, _ = scene.rect
+    read_args: dict[str, Any] = {
+        "plane": {"C": channel_index},
+        "roi": (scene_x + x, scene_y + y, width, height),
+    }
+    if scene.index is not None:
+        read_args["scene"] = scene.index
+    data = czi_document.read(**read_args)
+    return _pylibczirw_array_to_image(data, width, height)
+
+
+def _pylibczirw_array_to_image(data: Any, width: int, height: int) -> Image.Image:
+    array = np.asarray(data)
+    if array.ndim == 3 and array.shape[-1] == 1:
+        array = array[:, :, 0]
+    if array.ndim > 2:
+        return Image.fromarray(array)
+    if array.shape != (height, width):
+        padded = np.zeros((height, width), dtype=array.dtype)
+        copy_height = min(height, array.shape[0]) if array.ndim >= 1 else 0
+        copy_width = min(width, array.shape[1]) if array.ndim >= 2 else 0
+        if copy_height > 0 and copy_width > 0:
+            padded[:copy_height, :copy_width] = array[:copy_height, :copy_width]
+        array = padded
+    return Image.fromarray(array)
 
 
 def _read_bioformats_biomarker_region(

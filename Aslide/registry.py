@@ -133,6 +133,9 @@ def build_default_registry() -> FormatRegistry:
             slide_backend=lambda: _load_attr("Aslide.czi.czi_slide", "CziSlide"),
             slide_family="czi",
             availability_check=lambda: (
+                _module_available("pylibCZIrw")
+                or _module_available("pylibCZIrw.czi")
+                or
                 (_module_available("bioformats") and _module_available("javabridge"))
                 or _module_available("czifile")
             ),

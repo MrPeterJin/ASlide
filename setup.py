@@ -313,6 +313,8 @@ setup(
             "python-javabridge",
         ],
         "czi": [
+            "pylibCZIrw",
+            "xmltodict",
             "czifile",
         ],
     },

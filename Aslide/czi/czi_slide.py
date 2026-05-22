@@ -56,21 +56,17 @@ class CziSlide:
         self.filename = filename
         if adapter is None:
             try:
-                adapter = CziAdapter.from_bioformats(filename)
-            except RuntimeError:
+                adapter = CziAdapter.from_pylibczirw(filename)
+            except (RuntimeError, ImportError):
                 try:
-                    adapter = CziAdapter.from_czifile(filename)
-                except ImportError as exc:
-                    raise ImportError(
-                        "CZI adapter dependency is not configured; Bio-Formats and czifile backends are unavailable"
-                    ) from exc
-            except ImportError:
-                try:
-                    adapter = CziAdapter.from_czifile(filename)
-                except ImportError as exc:
-                    raise ImportError(
-                        "CZI adapter dependency is not configured; Bio-Formats and czifile backends are unavailable"
-                    ) from exc
+                    adapter = CziAdapter.from_bioformats(filename)
+                except (RuntimeError, ImportError):
+                    try:
+                        adapter = CziAdapter.from_czifile(filename)
+                    except ImportError as exc:
+                        raise ImportError(
+                            "CZI adapter dependency is not configured; pylibCZIrw, Bio-Formats, and czifile backends are unavailable"
+                        ) from exc
         self._adapter = adapter
         self._slide_family = self._adapter.classify_slide_family()
 

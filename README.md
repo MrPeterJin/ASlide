@@ -23,14 +23,14 @@
 
 ASlide supports the following whole-slide image formats:
 
-Formats backed by optional readers require their matching extras. `.vsi` uses the `bioformats` extra. `.czi` can use either the `bioformats` extra or the lightweight `czi` extra.
+Formats backed by optional readers require their matching extras. `.vsi` uses the `bioformats` extra. `.czi` can use the lightweight `czi` extra or the Bio-Formats extra.
 
 | Format | Extension | Vendor/Source | Backend |
 |--------|-----------|---------------|---------|
 | Aperio SVS | `.svs`, `.svslide` | Leica Biosystems | OpenSlide |
 | DYJ | `.dyj` | DPT | Native SDK |
 | DYQX | `.dyqx` | SQRAY | Native SDK |
-| Zeiss CZI | `.czi` | Zeiss | Bio-Formats (`bioformats` extra) or czifile (`czi` extra) |
+| Zeiss CZI | `.czi` | Zeiss | pylibCZIrw/czifile (`czi` extra) or Bio-Formats (`bioformats` extra) |
 | Generic TIFF | `.tif`, `.tiff` | Various | OpenSlide |
 | Hamamatsu NDPI | `.ndpi` | Hamamatsu | OpenSlide |
 | Hamamatsu VMS/VMU | `.vms`, `.vmu` | Hamamatsu | OpenSlide |
@@ -85,7 +85,7 @@ If you need Bio-Formats-backed readers such as `.vsi`, install the optional extr
 pip install 'git+https://github.com/MrPeterJin/ASlide.git#egg=Aslide[bioformats]'
 ```
 
-If you only need `.czi` support and want the lighter fallback reader path, install the dedicated CZI extra instead:
+If you only need `.czi` support and want the lighter Zeiss reader path, install the dedicated CZI extra instead:
 
 ```bash
 pip install 'git+https://github.com/MrPeterJin/ASlide.git#egg=Aslide[czi]'
@@ -106,6 +106,12 @@ Bio-Formats-backed formats require additional optional dependencies and a workin
 - Java 11+ available on `PATH` or exposed through `JAVA_HOME`
 
 Keeping Bio-Formats support optional makes the default ASlide installation much more reliable on systems that do not need `.vsi` support or the Bio-Formats CZI path. The lightweight `czi` extra avoids the Java runtime requirement when the fallback reader is sufficient.
+
+For existing environments pinned to `numpy<2`, install the Zeiss CZI reader dependencies without letting pip re-resolve NumPy:
+
+```bash
+python -m pip install pylibCZIrw xmltodict --no-deps
+```
 
 ### Post-Installation Setup
 
@@ -185,21 +191,22 @@ viewer = DeepZoom(slide) if slide.slide_family == 'multiplex' else None
 
 ### CZI Runtime Classification
 
-CZI files are also classified at runtime. ASlide first tries the optional Bio-Formats-backed reader path, then falls back to `czifile` for files that Bio-Formats cannot initialize.
+CZI files are also classified at runtime. ASlide first tries the optional pylibCZIrw-backed reader path, then falls back to Bio-Formats and finally `czifile` for environments where pylibCZIrw is not installed.
 
 Before opening `.czi` files, install one of the optional extras below:
 
 ```bash
+# Lightweight CZI-only path
+pip install 'git+https://github.com/MrPeterJin/ASlide.git#egg=Aslide[czi]'
+
 # Full Bio-Formats path (requires Java)
 pip install 'git+https://github.com/MrPeterJin/ASlide.git#egg=Aslide[bioformats]'
 export JAVA_HOME=/path/to/your/jdk
-
-# Lightweight CZI-only fallback path
-pip install 'git+https://github.com/MrPeterJin/ASlide.git#egg=Aslide[czi]'
 ```
 
 - Brightfield CZI behaves like a standard slide, so `read_region()` is the normal read path.
 - Multiplex CZI requires biomarker-aware reads, so use `list_biomarkers()` and `read_biomarker_region()` instead of generic `read_region()`.
+- Mosaic CZI scenes are exposed with zero-origin ASlide coordinates; the pylibCZIrw backend translates reads into the selected scene's absolute CZI coordinate frame internally.
 
 ```python
 from Aslide import Slide
