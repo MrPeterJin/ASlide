@@ -28,6 +28,7 @@ class GenericTiffSlide(AbstractSlide):
             self._axes = self._series.axes
             self._dtype = tiff.pages[0].dtype
             self._description = str(getattr(tiff.pages[0], "description", "") or "")
+            self._mpp = _extract_tiff_mpp(tiff.pages[0])
 
     @property
     def level_count(self) -> int:
@@ -47,11 +48,23 @@ class GenericTiffSlide(AbstractSlide):
 
     @property
     def properties(self) -> dict[str, str]:
-        return {
+        props = {
             "openslide.vendor": "tifffile",
             "tiff.axes": self._axes,
             "tiff.description": self._description,
         }
+        if self._mpp is not None:
+            mpp_x, mpp_y = self._mpp
+            props["openslide.mpp-x"] = str(mpp_x)
+            props["openslide.mpp-y"] = str(mpp_y)
+        return props
+
+    @property
+    def mpp(self) -> float | None:
+        if self._mpp is None:
+            return None
+        mpp_x, mpp_y = self._mpp
+        return (mpp_x + mpp_y) / 2
 
     @property
     def associated_images(self) -> dict[str, Image.Image]:
@@ -125,3 +138,33 @@ def _normalize_to_uint8(data: NDArray[Any]) -> NDArray[np.uint8]:
         return np.zeros(data.shape, dtype=np.uint8)
     scaled = (data - minimum) / (maximum - minimum)
     return (scaled * 255).astype(np.uint8)
+
+
+def _extract_tiff_mpp(page: Any) -> tuple[float, float] | None:
+    x_resolution = _resolution_value(page.tags.get("XResolution"))
+    y_resolution = _resolution_value(page.tags.get("YResolution"))
+    if not x_resolution or not y_resolution:
+        return None
+
+    unit_tag = page.tags.get("ResolutionUnit")
+    unit = int(unit_tag.value) if unit_tag is not None else 2
+    if unit == 2:  # inch
+        microns_per_unit = 25400.0
+    elif unit == 3:  # centimeter
+        microns_per_unit = 10000.0
+    else:
+        return None
+
+    return (microns_per_unit / x_resolution, microns_per_unit / y_resolution)
+
+
+def _resolution_value(tag: Any) -> float | None:
+    if tag is None:
+        return None
+    value = tag.value
+    if isinstance(value, tuple) and len(value) == 2:
+        numerator, denominator = value
+        if denominator == 0:
+            return None
+        return float(numerator) / float(denominator)
+    return float(value)
