@@ -195,11 +195,11 @@ def build_default_registry() -> FormatRegistry:
         FormatEntry(
             format_id="hdf5",
             extensions=(".h5", ".hdf5", ".h5ad"),
-            slide_backend=lambda: _load_attr("Aslide.hdf5_family", "Hdf5Slide"),
+            slide_backend=lambda: _load_attr("Aslide.hdf5.slide", "Hdf5Slide"),
             slide_family="multiplex",
             availability_check=lambda: _module_available("h5py"),
             probe=lambda path: _load_attr(
-                "Aslide.hdf5_family", "is_hdf5_multiplex_candidate"
+                "Aslide.hdf5.probe", "is_hdf5_multiplex_candidate"
             )(path),
             capabilities=BackendCapabilities(
                 has_associated_images=False,
