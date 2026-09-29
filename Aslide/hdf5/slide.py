@@ -11,7 +11,7 @@ from ..errors import (
     UnknownBiomarkerError,
     UnsupportedOperationError,
 )
-from .probe import _normalize_marker_values
+from .probe import extract_markers
 
 
 class Hdf5Slide:
@@ -19,7 +19,7 @@ class Hdf5Slide:
         self._filename = filename
         self._handle = h5py.File(filename, "r")
         self._dataset = self._find_dataset()
-        self._biomarkers = _normalize_marker_values(self._dataset.attrs["markers"])
+        self._biomarkers = list(extract_markers(self._dataset) or [])
         if len(self._dataset.shape) != 3:
             self.close()
             raise ValueError(f"HDF5 multiplex dataset must be 3D: {self._dataset.name}")
@@ -36,8 +36,9 @@ class Hdf5Slide:
         def visitor(name: str, obj: Any) -> None:
             if not isinstance(obj, h5py.Dataset):
                 return
-            markers = obj.attrs.get("markers")
-            normalized = _normalize_marker_values(markers)
+            normalized = extract_markers(obj)
+            if normalized is None:
+                return
             if len(obj.shape) == 3 and len(normalized) == int(obj.shape[0]):
                 candidates.append(obj)
 

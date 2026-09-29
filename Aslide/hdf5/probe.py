@@ -54,11 +54,11 @@ def _is_multiplex_dataset(dataset: h5py.Dataset) -> bool:
     if channel_count <= 1:
         return False
 
-    markers = _extract_markers(dataset)
+    markers = extract_markers(dataset)
     return markers is not None and len(markers) == channel_count
 
 
-def _extract_markers(dataset: h5py.Dataset) -> list[str] | None:
+def extract_markers(dataset: h5py.Dataset) -> list[str] | None:
     for attribute_name in _MARKER_ATTRIBUTE_NAMES:
         if attribute_name not in dataset.attrs:
             continue
