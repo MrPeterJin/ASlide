@@ -20,6 +20,8 @@ from typing import BinaryIO
 
 from PIL import Image
 
+from .zyp_metadata import locate_metadata_start
+
 
 class ZypSlide:
     """ZYP slide reader compatible with OpenSlide-like interface."""
@@ -92,25 +94,9 @@ class ZypSlide:
         - Format: FFFE FF <len_byte> <utf16le_text>
         """
         file = self._require_file()
-        # Search for first FFFE marker from the end
-        search_size = min(10 * 1024 * 1024, self._file_size)  # Search last 10MB
-        file.seek(max(0, self._file_size - search_size))
-        tail_chunk = file.read(search_size)
-
-        # Find first FFFE FF pattern (metadata start marker)
-        first_fffe = -1
-        for i in range(len(tail_chunk) - 2):
-            if tail_chunk[i : i + 3] == b"\xff\xfe\xff":
-                first_fffe = i
-                break
-
-        if first_fffe == -1:
-            raise ValueError("Invalid ZYP file: no metadata found")
-
-        self._metadata_start = max(0, self._file_size - search_size) + first_fffe
-
-        # Parse segments from metadata
-        meta_data = tail_chunk[first_fffe:]
+        self._metadata_start = locate_metadata_start(file, self._file_size)
+        _ = file.seek(self._metadata_start)
+        meta_data = file.read()
         segments = self._parse_segments(meta_data)
         self._process_segments(segments)
 
