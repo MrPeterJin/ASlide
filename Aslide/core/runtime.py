@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Iterable
 
 
-PACKAGE_ROOT = Path(__file__).resolve().parent
+PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 
 
 def collect_library_paths(package_root: Path | None = None) -> list[str]:

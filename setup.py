@@ -252,7 +252,7 @@ class CustomInstall(install):
         print("\n1. Source the setup script before running your Python code:")
         print(f"   $ source {setup_script_path}")
         print(
-            "\n2. Or call Aslide.bootstrap.setup_runtime_environment() explicitly in Python."
+            "\n2. Or call Aslide.core.runtime.setup_runtime_environment() explicitly in Python."
         )
 
         print("\nInstallation directory: " + install_dir)

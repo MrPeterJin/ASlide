@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ..bootstrap import (
+from ..core.runtime import (
     collect_library_paths,
     preload_shared_libraries,
     setup_runtime_environment,
