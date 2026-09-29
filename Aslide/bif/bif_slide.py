@@ -14,6 +14,9 @@ from typing import Dict, List, Optional, Tuple, Any
 from PIL import Image
 from openslide import AbstractSlide
 
+from ..core.tiff import read_tiff_region
+from ..core.virtual_pyramid import needs_virtual_pyramid
+
 try:
     import tifffile as _tifffile
 except ImportError:
@@ -185,7 +188,7 @@ class BifSlide(AbstractSlide):
 
     def _generate_thumbnail(self):
         """Generate thumbnail from the lowest resolution level."""
-        if not self._level_pages:
+        if not self._level_pages or needs_virtual_pyramid(tuple(self._levels)):
             return
 
         try:
@@ -218,7 +221,7 @@ class BifSlide(AbstractSlide):
         if "macro" in self._associated_images:
             return  # Already have macro
 
-        if not self._level_pages:
+        if not self._level_pages or needs_virtual_pyramid(tuple(self._levels)):
             return
 
         try:
@@ -396,9 +399,11 @@ class BifSlide(AbstractSlide):
             return Image.new("RGBA", size, (255, 255, 255, 255))
 
         try:
-            # Read region using tifffile
-            # For tiled images, tifffile handles tile reading automatically
-            region_data = page.asarray()[y:y_end, x:x_end]
+            region_data = read_tiff_region(
+                page,
+                (x, y),
+                (actual_width, actual_height),
+            )
 
             # Convert to PIL Image
             if len(region_data.shape) == 3 and region_data.shape[2] == 3:
