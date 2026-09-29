@@ -5,6 +5,7 @@ from typing import Any, cast
 
 from .errors import MissingDefaultBiomarkerError, UnsupportedOperationError
 from .registry import registry
+from .core.virtual_pyramid import VirtualPyramidSlide, needs_virtual_pyramid
 
 
 RUNTIME_CLASSIFIED_FAMILIES = {"qptiff", "czi"}
@@ -56,6 +57,11 @@ class Slide:
             filepath, acquisition_id=acquisition_id
         )
         self._slide_family = self._resolve_slide_family()
+        self._virtual_pyramid = None
+        if self._slide_family == "brightfield" and needs_virtual_pyramid(
+            tuple(self._backend.level_dimensions)
+        ):
+            self._virtual_pyramid = VirtualPyramidSlide(self._backend)
 
     @property
     def backend(self) -> Any:
@@ -147,18 +153,26 @@ class Slide:
 
     @property
     def level_count(self) -> int:
+        if self._virtual_pyramid is not None:
+            return self._virtual_pyramid.level_count
         return self.backend.level_count
 
     @property
     def dimensions(self) -> Any:
+        if self._virtual_pyramid is not None:
+            return self._virtual_pyramid.dimensions
         return self.backend.dimensions
 
     @property
     def level_dimensions(self) -> Any:
+        if self._virtual_pyramid is not None:
+            return self._virtual_pyramid.level_dimensions
         return self.backend.level_dimensions
 
     @property
     def level_downsamples(self) -> Any:
+        if self._virtual_pyramid is not None:
+            return self._virtual_pyramid.level_downsamples
         return self.backend.level_downsamples
 
     @property
@@ -170,7 +184,7 @@ class Slide:
         backend_images = getattr(self.backend, "associated_images", {})
         thumbnail_factory = None
         if self.slide_family == "brightfield":
-            thumbnail_factory = getattr(self.backend, "get_thumbnail", None)
+            thumbnail_factory = self.get_thumbnail
         return AssociatedImagesView(backend_images, thumbnail_factory)
 
     def label_image(self, save_path: str | None = None) -> Any:
@@ -191,6 +205,8 @@ class Slide:
         return associated_images.get("label")
 
     def get_best_level_for_downsample(self, downsample: float) -> int:
+        if self._virtual_pyramid is not None:
+            return self._virtual_pyramid.get_best_level_for_downsample(downsample)
         return self.backend.get_best_level_for_downsample(downsample)
 
     def get_thumbnail(self, size: tuple[int, int]) -> Any:
@@ -198,6 +214,8 @@ class Slide:
             raise UnsupportedOperationError(
                 "Multiplex slides do not support generic thumbnails; use a display biomarker-aware path instead"
             )
+        if self._virtual_pyramid is not None:
+            return self._virtual_pyramid.get_thumbnail(size)
         return self.backend.get_thumbnail(size)
 
     def list_biomarkers(self) -> list[str]:
@@ -245,7 +263,10 @@ class Slide:
             raise UnsupportedOperationError(
                 "Multiplex slides require an explicit biomarker; use read_biomarker_region()"
             )
-        image = self.backend.read_region(location, level, size)
+        if self._virtual_pyramid is not None:
+            image = self._virtual_pyramid.read_region(location, level, size)
+        else:
+            image = self.backend.read_region(location, level, size)
         if hasattr(image, "mode") and image.mode != "RGBA":
             return image.convert("RGBA")
         return image
