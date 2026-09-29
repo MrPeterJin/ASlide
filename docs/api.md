@@ -131,7 +131,7 @@ Runtime-classified formats may have conservative static capabilities and still e
 ## Runtime Bootstrap Helpers
 
 ```python
-from Aslide.bootstrap import collect_library_paths, preload_shared_libraries, setup_runtime_environment
+from Aslide.core.runtime import collect_library_paths, preload_shared_libraries, setup_runtime_environment
 ```
 
 - `collect_library_paths(package_root=None)`: returns package library directories for OpenCV, SDPC, KFB, and TRON when present

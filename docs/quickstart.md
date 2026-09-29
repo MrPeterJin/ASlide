@@ -69,7 +69,7 @@ with Slide("sample.ims") as slide:
 If a vendor SDK library cannot be loaded, initialize runtime library paths before opening slides.
 
 ```python
-from Aslide.bootstrap import setup_runtime_environment
+from Aslide.core.runtime import setup_runtime_environment
 
 setup_runtime_environment()
 ```

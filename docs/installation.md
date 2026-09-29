@@ -69,7 +69,7 @@ Most bundled backends work after installation. If a backend still needs explicit
 Recommended Python setup:
 
 ```python
-from Aslide.bootstrap import setup_runtime_environment
+from Aslide.core.runtime import setup_runtime_environment
 
 setup_runtime_environment()
 from Aslide import Slide
