@@ -10,6 +10,8 @@ from PIL import Image
 from openslide import AbstractSlide
 import tifffile
 
+from ..core.tiff import read_tiff_region
+
 from ..errors import (
     MissingDefaultBiomarkerError,
     UnknownBiomarkerError,
@@ -31,15 +33,16 @@ class GenericTiffSlide(AbstractSlide):
         self._path = Path(filename)
         self._biomarkers: list[str] | None = None
         with tifffile.TiffFile(filename) as tiff:
+            page = tiff.pages[0].keyframe
             self._series = tiff.series[0]
             self._shape = tuple(int(value) for value in self._series.shape)
             self._axes = self._series.axes
-            self._dtype = tiff.pages[0].dtype
-            self._description = str(getattr(tiff.pages[0], "description", "") or "")
-            self._mpp = _extract_tiff_mpp(tiff.pages[0])
+            self._dtype = page.dtype
+            self._description = str(getattr(page, "description", "") or "")
+            self._mpp = _extract_tiff_mpp(page)
             self._page_count = len(tiff.pages)
             self._samples_per_pixel = int(
-                getattr(tiff.pages[0].tags.get("SamplesPerPixel"), "value", 1) or 1
+                getattr(page.tags.get("SamplesPerPixel"), "value", 1) or 1
             )
 
     @property
@@ -100,9 +103,11 @@ class GenericTiffSlide(AbstractSlide):
         x, y = location
         width, height = size
         with tifffile.TiffFile(str(self._path)) as tiff:
-            data = np.asarray(tiff.asarray())
-        image = _as_displayable_image(data, self._axes)
-        region = image[y : y + height, x : x + width]
+            region = read_tiff_region(
+                tiff.pages[0].keyframe,
+                (x, y),
+                (width, height),
+            )
         if region.size == 0:
             return Image.new("RGBA", (width, height))
         if region.ndim == 2:
@@ -237,21 +242,6 @@ def _dimensions_from_axes(shape: tuple[int, ...], axes: str) -> tuple[int, int]:
     if "X" in axes and "Y" in axes:
         return (shape[axes.index("X")], shape[axes.index("Y")])
     return (shape[-1], shape[-2])
-
-
-def _as_displayable_image(data: NDArray[Any], axes: str) -> NDArray[Any]:
-    array = np.asarray(data)
-    if array.ndim == 2:
-        return array
-    if axes.endswith("YXS") and array.ndim == 3:
-        return array
-    while array.ndim > 3:
-        array = array[0]
-    if array.ndim == 3 and array.shape[0] in {3, 4} and "Y" in axes and "X" in axes:
-        array = np.moveaxis(array, 0, -1)
-    elif array.ndim == 3 and array.shape[-1] not in {3, 4}:
-        array = array[..., 0]
-    return array
 
 
 def _normalize_to_uint8(data: NDArray[Any]) -> NDArray[np.uint8]:
