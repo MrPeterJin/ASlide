@@ -156,13 +156,11 @@ class DeepZoomGenerator(object):
         args, z_size = self._get_tile_info(level, address)
         tile = self._osr.read_region(*args)
         
-        # SDPC read_region returns RGB, convert to RGBA for compositing
-        if tile.mode == 'RGB':
-            tile = tile.convert('RGBA')
-        
-        # Apply on solid background
-        bg = Image.new('RGB', tile.size, self._bg_color)
-        tile = Image.composite(tile, bg, tile)
+        # SDPC regions are opaque RGB. Compositing them over a background is
+        # an identity operation; keep compositing for other image modes.
+        if tile.mode != 'RGB':
+            bg = Image.new('RGB', tile.size, self._bg_color)
+            tile = Image.composite(tile, bg, tile)
 
         # Scale to the correct size
         if tile.size != z_size:

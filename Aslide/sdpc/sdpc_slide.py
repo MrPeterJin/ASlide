@@ -1,4 +1,3 @@
-import numpy as np
 from ctypes import *
 import gc
 from PIL import Image
@@ -206,16 +205,9 @@ class SdpcSlide:
                 f"-> level-{level} coords ({level_x}, {level_y}) with size ({width}, {height})"
             )
 
-        # Convert BGRA buffer to numpy array
-        bgra_array = np.frombuffer(bgra_buffer, dtype=np.uint8)
-        bgra_array = bgra_array.reshape((height, width, 4))
-
-        # Convert BGRA to RGB (drop alpha channel and swap B and R)
-        rgb_array = bgra_array[:, :, [2, 1, 0]]  # BGR -> RGB
-
-        # Create PIL Image
-        img = Image.fromarray(rgb_array, "RGB")
-        return img
+        # Decode directly to RGB, discarding the fourth byte as before.
+        # frombytes owns the output pixels, so the SDK buffer can be released.
+        return Image.frombytes("RGB", (width, height), bgra_buffer, "raw", "BGRX", 0, 1)
 
     def get_thumbnail(self, size):
         """Get a thumbnail of the slide"""
