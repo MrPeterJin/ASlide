@@ -28,13 +28,7 @@ def read_tiff_region(
         file_handle = page.parent.filehandle
         _ = file_handle.seek(offset)
         encoded = file_handle.read(byte_count)
-        decoded, position, shape = page.decode(
-            encoded,
-            index,
-            jpegtables=page.jpegtables,
-            jpegheader=page.keyframe.jpegheader,
-            _fullsize=page.is_tiled,
-        )
+        decoded, position, shape = _decode_segment(page, encoded, index)
         if decoded is None:
             continue
         _copy_intersection(output, decoded, position, shape, x, y, x_end, y_end)
@@ -42,6 +36,94 @@ def read_tiff_region(
     if samples == 1:
         return output[..., 0]
     return output
+
+
+def _decode_segment(
+    page: tifffile.TiffPage,
+    encoded: bytes,
+    index: int,
+) -> tuple[
+    NDArray[np.generic] | None,
+    tuple[int, int, int, int, int],
+    tuple[int, int, int, int],
+]:
+    """Decode a segment without forcing cropped edge tiles to full tile size."""
+    decode_kwargs = {
+        "jpegtables": page.jpegtables,
+        "jpegheader": page.keyframe.jpegheader,
+        "_fullsize": False,
+    }
+    try:
+        return page.decode(encoded, index, **decode_kwargs)
+    except (ValueError, tifffile.TiffFileError) as decode_error:
+        if not page.is_tiled:
+            raise
+        try:
+            return _decode_cropped_jpeg_tile(page, encoded, index)
+        except Exception:
+            # The segment is not a cropped JPEG bitstream, or it is corrupt.
+            # Preserve the standard decoder's diagnostic in either case.
+            raise decode_error
+
+
+def _decode_cropped_jpeg_tile(
+    page: tifffile.TiffPage,
+    encoded: bytes,
+    index: int,
+) -> tuple[
+    NDArray[np.generic],
+    tuple[int, int, int, int, int],
+    tuple[int, int, int, int],
+]:
+    """Decode a JPEG tile using dimensions stored in its JPEG bitstream."""
+    try:
+        import imagecodecs
+    except ImportError:
+        # Preserve tifffile's normal missing-codec error when imagecodecs is
+        # unavailable instead of masking it with an unrelated import failure.
+        return page.decode(
+            encoded,
+            index,
+            jpegtables=page.jpegtables,
+            jpegheader=page.keyframe.jpegheader,
+            _fullsize=False,
+        )
+
+    _empty, position, declared_shape = page.decode(
+        None,
+        index,
+        jpegtables=page.jpegtables,
+        jpegheader=page.keyframe.jpegheader,
+        _fullsize=False,
+    )
+    decoded = np.asarray(
+        imagecodecs.jpeg_decode(
+            encoded,
+            bitspersample=page.bitspersample,
+            tables=page.jpegtables,
+            header=page.keyframe.jpegheader,
+        )
+    )
+    if decoded.ndim == 2:
+        decoded = decoded[..., np.newaxis]
+    if decoded.ndim != 3:
+        raise tifffile.TiffFileError(
+            f"JPEG tile {index} decoded to unsupported shape {decoded.shape}"
+        )
+
+    decoded = decoded[np.newaxis, ...]
+    actual_shape = (
+        decoded.shape[0],
+        decoded.shape[1],
+        decoded.shape[2],
+        decoded.shape[3],
+    )
+    # A malformed JPEG must not extend beyond the tile declared by the IFD.
+    shape = tuple(
+        min(actual, declared)
+        for actual, declared in zip(actual_shape, declared_shape)
+    )
+    return decoded, position, shape
 
 
 def _intersecting_segments(
@@ -87,7 +169,10 @@ def _copy_intersection(
     request_y_end: int,
 ) -> None:
     sample, _, segment_y, segment_x, _ = position
-    _, segment_height, segment_width, segment_samples = shape
+    _, declared_height, declared_width, declared_samples = shape
+    segment_height = min(declared_height, decoded.shape[1])
+    segment_width = min(declared_width, decoded.shape[2])
+    segment_samples = min(declared_samples, decoded.shape[3])
     overlap_x = max(request_x, segment_x)
     overlap_y = max(request_y, segment_y)
     overlap_x_end = min(request_x_end, segment_x + segment_width)
