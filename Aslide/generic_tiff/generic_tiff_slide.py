@@ -34,9 +34,21 @@ class GenericTiffSlide(AbstractSlide):
         self._biomarkers: list[str] | None = None
         with tifffile.TiffFile(filename) as tiff:
             page = tiff.pages[0].keyframe
-            self._series = tiff.series[0]
-            self._shape = tuple(int(value) for value in self._series.shape)
-            self._axes = self._series.axes
+            series = tiff.series[0]
+            levels = series.levels
+            self._shape = tuple(int(value) for value in series.shape)
+            self._axes = series.axes
+            self._level_dimensions = tuple(
+                _dimensions_from_axes(
+                    tuple(int(value) for value in level.shape), level.axes
+                )
+                for level in levels
+            )
+            level0_width = self._level_dimensions[0][0]
+            self._level_downsamples = tuple(
+                level0_width / level_width
+                for level_width, _level_height in self._level_dimensions
+            )
             self._dtype = page.dtype
             self._description = str(getattr(page, "description", "") or "")
             self._mpp = _extract_tiff_mpp(page)
@@ -47,19 +59,19 @@ class GenericTiffSlide(AbstractSlide):
 
     @property
     def level_count(self) -> int:
-        return 1
+        return len(self._level_dimensions)
 
     @property
     def dimensions(self) -> tuple[int, int]:
-        return _dimensions_from_axes(self._shape, self._axes)
+        return self._level_dimensions[0]
 
     @property
     def level_dimensions(self) -> tuple[tuple[int, int], ...]:
-        return (self.dimensions,)
+        return self._level_dimensions
 
     @property
     def level_downsamples(self) -> tuple[float, ...]:
-        return (1.0,)
+        return self._level_downsamples
 
     @property
     def properties(self) -> dict[str, str]:
@@ -89,7 +101,12 @@ class GenericTiffSlide(AbstractSlide):
         return None
 
     def get_best_level_for_downsample(self, downsample: float) -> int:
-        return 0
+        best_level = 0
+        for level, level_downsample in enumerate(self._level_downsamples):
+            if level_downsample > downsample:
+                break
+            best_level = level
+        return best_level
 
     def read_region(
         self, location: tuple[int, int], level: int, size: tuple[int, int]
@@ -98,14 +115,22 @@ class GenericTiffSlide(AbstractSlide):
             raise UnsupportedOperationError(
                 "Multiplex TIFF slides require an explicit biomarker; use read_biomarker_region()"
             )
-        if level != 0:
-            raise ValueError("Generic TIFF backend currently supports only level 0")
+        if level < 0 or level >= self.level_count:
+            raise ValueError(f"Invalid level: {level}")
         x, y = location
         width, height = size
+        if width < 0 or height < 0:
+            raise ValueError("Size dimensions must be non-negative")
+        if width == 0 or height == 0:
+            return Image.new("RGBA", (width, height))
+
+        downsample = self._level_downsamples[level]
+        level_location = (int(x / downsample), int(y / downsample))
         with tifffile.TiffFile(str(self._path)) as tiff:
+            level_series = tiff.series[0].levels[level]
             region = read_tiff_region(
-                tiff.pages[0].keyframe,
-                (x, y),
+                level_series.pages[0].keyframe,
+                level_location,
                 (width, height),
             )
         if region.size == 0:
@@ -129,7 +154,12 @@ class GenericTiffSlide(AbstractSlide):
             raise UnsupportedOperationError(
                 "Multiplex TIFF thumbnails require an explicit display biomarker-aware path"
             )
-        image = self.read_region((0, 0), 0, self.dimensions)
+        requested_downsample = max(
+            self.dimensions[0] / size[0],
+            self.dimensions[1] / size[1],
+        )
+        level = self.get_best_level_for_downsample(requested_downsample)
+        image = self.read_region((0, 0), level, self.level_dimensions[level])
         image.thumbnail(size)
         return image
 

@@ -36,7 +36,22 @@ def _is_openslide_candidate(path: str) -> bool:
     extension = Path(path).suffix.lower()
     if extension not in _OPENSLIDE_TIFF_EXTENSIONS:
         return True
+    if _has_tifffile_pyramid(path):
+        # OpenSlide builds without reliable SubIFD support may detect the file
+        # but expose only level 0. Route these pyramids to GenericTiffSlide,
+        # which reads tifffile's series[0].levels directly.
+        return False
     return OpenSlide.detect_format(path) is not None
+
+
+def _has_tifffile_pyramid(path: str) -> bool:
+    try:
+        import tifffile
+
+        with tifffile.TiffFile(path) as tiff:
+            return bool(tiff.series and len(tiff.series[0].levels) > 1)
+    except Exception:
+        return False
 
 
 @dataclass(frozen=True)
